@@ -1,0 +1,9 @@
+export const PICKUP_STATUSES = Object.freeze({
+  ASSIGNED: 'ASSIGNED',
+  ACCEPTED: 'ACCEPTED',
+  COLLECTED: 'COLLECTED',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED',
+});
+
+export const PICKUP_STATUS_VALUES = Object.values(PICKUP_STATUSES);
