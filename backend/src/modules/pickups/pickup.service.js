@@ -4,23 +4,22 @@ import { OWNER_TYPES } from '../../constants/ownerTypes.js';
 import { PICKUP_STATUSES } from '../../constants/pickupStatus.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { TRANSFER_TYPES } from '../../constants/transferTypes.js';
+import { CaseEngine } from '../../domain/caseEngine.js';
+import { EventPublisher } from '../../domain/eventPublisher.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
-import { Event } from '../../models/Event.js';
+import { Facility } from '../../models/Facility.js';
 import { Pickup } from '../../models/Pickup.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
 import { User } from '../../models/User.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { assertValidTransition } from '../cases/caseStateMachine.js';
+import {
+  createAdminNotifications,
+  createNotification,
+} from '../notifications/notification.service.js';
 
 const requireObjectId = (value, label) => {
   if (!mongoose.isValidObjectId(value)) throw new ApiError(400, `Invalid ${label}`);
 };
-
-const createEvent = (caseId, type, actor, metadata, session) =>
-  Event.create(
-    [{ caseId, type, actorId: actor._id, actorRole: actor.role, metadata }],
-    { session },
-  );
 
 const getCourierPickup = async (pickupId, courierId, session) => {
   requireObjectId(pickupId, 'pickup ID');
@@ -36,15 +35,13 @@ const getPickupCase = async (pickup, session) => {
 };
 
 export const assignPickup = async (input, actor) => {
-  const { caseId, courierId, pickupAddress, scheduledWindow } = input;
-  if (!caseId || !courierId || !pickupAddress || !scheduledWindow?.start || !scheduledWindow?.end) {
-    throw new ApiError(400, 'Case ID, courier ID, pickup address, and scheduled window are required');
-  }
-  if (!pickupAddress.line1?.trim() || !pickupAddress.city?.trim() || !pickupAddress.state?.trim() || !pickupAddress.pincode?.trim()) {
-    throw new ApiError(400, 'Address line1, city, state, and pincode are required');
+  const { caseId, courierId, facilityId, scheduledWindow } = input;
+  if (!caseId || !courierId || !facilityId || !scheduledWindow?.start || !scheduledWindow?.end) {
+    throw new ApiError(400, 'Case ID, courier ID, facility ID, and scheduled window are required');
   }
   requireObjectId(caseId, 'case ID');
   requireObjectId(courierId, 'courier ID');
+  requireObjectId(facilityId, 'facility ID');
 
   const windowStart = new Date(scheduledWindow.start);
   const windowEnd = new Date(scheduledWindow.end);
@@ -56,40 +53,72 @@ export const assignPickup = async (input, actor) => {
   try {
     let assignedPickup;
     await session.withTransaction(async () => {
-      const [recoveryCase, courier] = await Promise.all([
+      const [recoveryCase, courier, facility] = await Promise.all([
         RecoveryCase.findById(caseId).session(session),
         User.findOne({ _id: courierId, role: USER_ROLES.COURIER, isActive: true }).session(session),
+        Facility.findOne({ _id: facilityId, isActive: true }).session(session),
       ]);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
+      if (!recoveryCase.pickupAddress) throw new ApiError(400, 'Recovery case is missing a pickup address. Cannot assign courier.');
       if (!courier) throw new ApiError(400, 'Courier must be an active COURIER user');
+      if (!facility) throw new ApiError(400, 'Facility must be an active facility');
       if (recoveryCase.pickupId) throw new ApiError(409, 'A pickup is already assigned to this case');
-      assertValidTransition(recoveryCase.status, CASE_STATUSES.PICKUP_ASSIGNED);
-
+      
       [assignedPickup] = await Pickup.create(
         [{
           caseId: recoveryCase._id,
           customerId: recoveryCase.customerId,
           courierId: courier._id,
-          pickupAddress,
+          facilityId: facility._id,
+          pickupAddress: recoveryCase.pickupAddress,
           scheduledWindow: { start: windowStart, end: windowEnd },
         }],
         { session },
       );
 
-      recoveryCase.status = CASE_STATUSES.PICKUP_ASSIGNED;
       recoveryCase.pickupId = assignedPickup._id;
+      recoveryCase.assignedFacilityId = facility._id;
       recoveryCase.currentOwnerType = OWNER_TYPES.CUSTOMER;
       recoveryCase.currentOwnerId = recoveryCase.customerId;
-      recoveryCase.version += 1;
-      await recoveryCase.save({ session });
-
-      await createEvent(
-        recoveryCase._id,
-        CASE_STATUSES.PICKUP_ASSIGNED,
-        actor,
-        { pickupId: assignedPickup._id, courierId: courier._id, previousStatus: CASE_STATUSES.CASE_CREATED },
+      await CaseEngine.transition({
         session,
-      );
+        recoveryCase,
+        toStatus: CASE_STATUSES.PICKUP_ASSIGNED,
+        actorId: actor._id,
+        actorRole: actor.role,
+        metadata: {
+          pickupId: assignedPickup._id,
+          courierId: courier._id,
+          facilityId: facility._id,
+          previousStatus: CASE_STATUSES.CASE_CREATED,
+        },
+      });
+    });
+    await Promise.all([
+      createNotification({
+        userId: assignedPickup.courierId,
+        caseId: assignedPickup.caseId,
+        type: CASE_STATUSES.PICKUP_ASSIGNED,
+        title: 'New pickup assigned',
+        message: 'A new recovery pickup has been assigned to you.',
+        metadata: { pickupId: assignedPickup._id },
+      }),
+      createNotification({
+        userId: assignedPickup.customerId,
+        caseId: assignedPickup.caseId,
+        type: CASE_STATUSES.PICKUP_ASSIGNED,
+        title: 'Pickup assigned',
+        message: 'A courier has been assigned to collect your item.',
+        metadata: { pickupId: assignedPickup._id },
+      }),
+    ]);
+    EventPublisher.publishPickupAssigned({
+      caseId: assignedPickup.caseId.toString(),
+      pickupId: assignedPickup._id.toString(),
+      customerId: assignedPickup.customerId.toString(),
+      courierId: assignedPickup.courierId.toString(),
+      status: assignedPickup.status,
+      timestamp: new Date().toISOString(),
     });
     return assignedPickup;
   } finally {
@@ -107,18 +136,36 @@ export const acceptPickup = async (pickupId, courier) => {
         throw new ApiError(409, 'Only an assigned pickup can be accepted');
       }
       const recoveryCase = await getPickupCase(pickup, session);
-      assertValidTransition(recoveryCase.status, CASE_STATUSES.PICKUP_ACCEPTED);
-
       pickup.status = PICKUP_STATUSES.ACCEPTED;
       pickup.acceptedAt = new Date();
       acceptedPickup = await pickup.save({ session });
-      recoveryCase.status = CASE_STATUSES.PICKUP_ACCEPTED;
-      recoveryCase.version += 1;
-      await recoveryCase.save({ session });
-      await createEvent(recoveryCase._id, CASE_STATUSES.PICKUP_ACCEPTED, courier, {
-        pickupId: pickup._id,
-        previousStatus: CASE_STATUSES.PICKUP_ASSIGNED,
-      }, session);
+      await CaseEngine.transition({
+        session,
+        recoveryCase,
+        toStatus: CASE_STATUSES.PICKUP_ACCEPTED,
+        actorId: courier._id,
+        actorRole: courier.role,
+        metadata: {
+          pickupId: pickup._id,
+          previousStatus: CASE_STATUSES.PICKUP_ASSIGNED,
+        },
+      });
+    });
+    await createNotification({
+      userId: acceptedPickup.customerId,
+      caseId: acceptedPickup.caseId,
+      type: CASE_STATUSES.PICKUP_ACCEPTED,
+      title: 'Courier accepted pickup',
+      message: 'The assigned courier accepted your pickup.',
+      metadata: { pickupId: acceptedPickup._id },
+    });
+    EventPublisher.publishPickupAccepted({
+      caseId: acceptedPickup.caseId.toString(),
+      pickupId: acceptedPickup._id.toString(),
+      customerId: acceptedPickup.customerId.toString(),
+      courierId: acceptedPickup.courierId.toString(),
+      status: acceptedPickup.status,
+      timestamp: new Date().toISOString(),
     });
     return acceptedPickup;
   } finally {
@@ -136,17 +183,23 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         throw new ApiError(409, 'Only an accepted pickup can be collected');
       }
       const recoveryCase = await getPickupCase(pickup, session);
-      assertValidTransition(recoveryCase.status, CASE_STATUSES.ITEM_COLLECTED);
-
       pickup.status = PICKUP_STATUSES.COLLECTED;
       pickup.collectedAt = new Date();
       collectedPickup = await pickup.save({ session });
 
-      recoveryCase.status = CASE_STATUSES.ITEM_COLLECTED;
       recoveryCase.currentOwnerType = OWNER_TYPES.COURIER;
       recoveryCase.currentOwnerId = courier._id;
-      recoveryCase.version += 1;
-      await recoveryCase.save({ session });
+      await CaseEngine.transition({
+        session,
+        recoveryCase,
+        toStatus: CASE_STATUSES.ITEM_COLLECTED,
+        actorId: courier._id,
+        actorRole: courier.role,
+        metadata: {
+          pickupId: pickup._id,
+          previousStatus: CASE_STATUSES.PICKUP_ACCEPTED,
+        },
+      });
 
       await CustodyRecord.create(
         [{
@@ -161,12 +214,79 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         }],
         { session },
       );
-      await createEvent(recoveryCase._id, CASE_STATUSES.ITEM_COLLECTED, courier, {
-        pickupId: pickup._id,
-        previousStatus: CASE_STATUSES.PICKUP_ACCEPTED,
-      }, session);
+    });
+    await Promise.all([
+      createNotification({
+        userId: collectedPickup.customerId,
+        caseId: collectedPickup.caseId,
+        type: CASE_STATUSES.ITEM_COLLECTED,
+        title: 'Item collected by courier',
+        message: 'Your item was collected by the courier.',
+        metadata: { pickupId: collectedPickup._id },
+      }),
+      createAdminNotifications({
+        caseId: collectedPickup.caseId,
+        type: CASE_STATUSES.ITEM_COLLECTED,
+        title: 'Item collected',
+        message: 'A recovery item was collected by its courier.',
+        metadata: { pickupId: collectedPickup._id },
+      }),
+    ]);
+    EventPublisher.publishPickupCollected({
+      caseId: collectedPickup.caseId.toString(),
+      pickupId: collectedPickup._id.toString(),
+      customerId: collectedPickup.customerId.toString(),
+      courierId: collectedPickup.courierId.toString(),
+      status: collectedPickup.status,
+      timestamp: new Date().toISOString(),
     });
     return collectedPickup;
+  } finally {
+    await session.endSession();
+  }
+};
+
+export const deliverPickup = async (pickupId, { proof } = {}, courier) => {
+  const session = await mongoose.startSession();
+  try {
+    let deliveredPickup;
+    await session.withTransaction(async () => {
+      const pickup = await getCourierPickup(pickupId, courier._id, session);
+      if (pickup.status !== PICKUP_STATUSES.COLLECTED) {
+        throw new ApiError(409, 'Only a collected pickup can be delivered');
+      }
+      const recoveryCase = await getPickupCase(pickup, session);
+      if (recoveryCase.status !== CASE_STATUSES.ITEM_COLLECTED) {
+        throw new ApiError(409, 'Case must be in ITEM_COLLECTED status to be delivered');
+      }
+      if (
+        !recoveryCase.assignedFacilityId ||
+        !recoveryCase.assignedFacilityId.equals(pickup.facilityId)
+      ) {
+        throw new ApiError(409, 'Pickup destination does not match the case facility');
+      }
+      
+      pickup.status = PICKUP_STATUSES.DELIVERED_TO_FACILITY;
+      pickup.deliveredAt = new Date();
+      if (proof && Object.keys(proof).length > 0) {
+        pickup.deliveryProof = proof;
+      }
+      deliveredPickup = await pickup.save({ session });
+
+      await CaseEngine.transition({
+        session,
+        recoveryCase,
+        toStatus: CASE_STATUSES.DELIVERED_TO_FACILITY,
+        actorId: courier._id,
+        actorRole: courier.role,
+        metadata: {
+          pickupId: pickup._id,
+          previousStatus: CASE_STATUSES.ITEM_COLLECTED,
+        },
+      });
+      // Do not create custody record yet. That happens when facility receives it.
+    });
+    return deliveredPickup;
   } finally {
     await session.endSession();
   }
@@ -183,18 +303,21 @@ export const failPickup = async (pickupId, { reason } = {}, courier) => {
       }
       const recoveryCase = await getPickupCase(pickup, session);
       const previousStatus = recoveryCase.status;
-      assertValidTransition(previousStatus, CASE_STATUSES.PICKUP_FAILED);
 
       pickup.status = PICKUP_STATUSES.FAILED;
       failedPickup = await pickup.save({ session });
-      recoveryCase.status = CASE_STATUSES.PICKUP_FAILED;
-      recoveryCase.version += 1;
-      await recoveryCase.save({ session });
-      await createEvent(recoveryCase._id, CASE_STATUSES.PICKUP_FAILED, courier, {
-        pickupId: pickup._id,
-        previousStatus,
-        ...(reason && { reason }),
-      }, session);
+      await CaseEngine.transition({
+        session,
+        recoveryCase,
+        toStatus: CASE_STATUSES.PICKUP_FAILED,
+        actorId: courier._id,
+        actorRole: courier.role,
+        metadata: {
+          pickupId: pickup._id,
+          previousStatus,
+          ...(reason && { reason }),
+        },
+      });
     });
     return failedPickup;
   } finally {
@@ -203,4 +326,24 @@ export const failPickup = async (pickupId, { reason } = {}, courier) => {
 };
 
 export const getMyPickups = (courier) =>
-  Pickup.find({ courierId: courier._id }).sort({ createdAt: -1 });
+  Pickup.find({ courierId: courier._id })
+    .populate('facilityId', 'name type location')
+    .sort({ createdAt: -1 });
+
+export const getPickupById = async (pickupId, user) => {
+  requireObjectId(pickupId, 'pickup ID');
+  const query = { _id: pickupId };
+  if (user.role === USER_ROLES.COURIER) {
+    query.courierId = user._id;
+  } else if (user.role !== USER_ROLES.ADMIN) {
+    throw new ApiError(403, 'Unauthorized to view pickup details');
+  }
+
+  const pickup = await Pickup.findOne(query).populate('facilityId', 'name type location');
+  if (!pickup) {
+    throw new ApiError(404, 'Pickup not found');
+  }
+  
+  const recoveryCase = await RecoveryCase.findById(pickup.caseId);
+  return { pickup, recoveryCase, facility: pickup.facilityId };
+};

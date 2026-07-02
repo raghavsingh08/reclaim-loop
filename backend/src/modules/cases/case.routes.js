@@ -5,6 +5,7 @@ import { authorize } from '../../middlewares/authorize.middleware.js';
 import {
   changeRecoveryCaseStatus,
   createRecoveryCase,
+  deleteRecoveryCase,
   getRecoveryCase,
   getRecoveryCaseCustody,
   getRecoveryCases,
@@ -24,5 +25,8 @@ router.patch(
 );
 router.get('/:caseId/timeline', getRecoveryCaseTimeline);
 router.get('/:caseId/custody', getRecoveryCaseCustody);
+
+// Development/testing-only destructive endpoint. ADMIN access is required.
+router.delete('/:caseId', authorize(USER_ROLES.ADMIN), deleteRecoveryCase);
 
 export default router;

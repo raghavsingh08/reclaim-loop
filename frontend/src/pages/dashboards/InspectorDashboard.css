@@ -1,0 +1,234 @@
+.inspector-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.workbench-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.workbench-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.workbench-subtitle {
+  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-6);
+}
+
+.kpi-card-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.kpi-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: var(--font-weight-bold);
+  margin-top: 2px;
+}
+
+.workbench-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+  .workbench-layout {
+    grid-template-columns: 2.5fr 1fr;
+  }
+}
+
+.main-panel, .secondary-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.workbench-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.workbench-table th {
+  padding: var(--space-3) var(--space-4);
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-app);
+}
+
+.workbench-table td {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.workbench-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.workbench-table tbody tr:hover {
+  background-color: var(--color-bg-app);
+}
+
+.case-code-mono {
+  font-family: monospace;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  font-size: 13px;
+  background-color: var(--color-primary-light);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.product-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.product-name {
+  font-weight: var(--font-weight-medium);
+}
+
+.product-category, .product-condition {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.facility-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.date-cell {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.status-chip {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-pending {
+  background-color: rgba(234, 179, 8, 0.1);
+  color: #eab308;
+}
+
+.status-in_progress {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.status-completed {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.completed-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.completed-card {
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.completed-card:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-app);
+}
+
+.completed-card-content {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.completed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.completed-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.completed-product {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.completed-date {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  padding-left: 20px;
+}

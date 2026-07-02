@@ -1,0 +1,11 @@
+.admin-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+    .admin-detail-grid {
+        grid-template-columns: 2fr 1fr;
+    }
+}

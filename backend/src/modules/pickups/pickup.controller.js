@@ -6,6 +6,8 @@ import {
   collectPickup,
   failPickup,
   getMyPickups,
+  getPickupById,
+  deliverPickup,
 } from './pickup.service.js';
 
 export const assign = asyncHandler(async (req, res) => {
@@ -23,6 +25,11 @@ export const collect = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, { pickup }, 'Item collected'));
 });
 
+export const deliver = asyncHandler(async (req, res) => {
+  const pickup = await deliverPickup(req.params.pickupId, req.body, req.user);
+  res.status(200).json(new ApiResponse(200, { pickup }, 'Item delivered to facility'));
+});
+
 export const fail = asyncHandler(async (req, res) => {
   const pickup = await failPickup(req.params.pickupId, req.body, req.user);
   res.status(200).json(new ApiResponse(200, { pickup }, 'Pickup marked as failed'));
@@ -31,4 +38,9 @@ export const fail = asyncHandler(async (req, res) => {
 export const getMine = asyncHandler(async (req, res) => {
   const pickups = await getMyPickups(req.user);
   res.status(200).json(new ApiResponse(200, { pickups }, 'Assigned pickups retrieved'));
+});
+
+export const getById = asyncHandler(async (req, res) => {
+  const data = await getPickupById(req.params.pickupId, req.user);
+  res.status(200).json(new ApiResponse(200, data, 'Pickup details retrieved'));
 });

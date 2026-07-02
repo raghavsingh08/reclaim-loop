@@ -1,0 +1,52 @@
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8);
+  min-height: 200px;
+}
+
+.state-fullscreen {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.state-spinner {
+  color: var(--color-primary);
+  animation: spin 1s linear infinite;
+  margin-bottom: var(--space-4);
+}
+
+.state-message {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.state-icon-wrapper {
+  background-color: var(--color-bg-surface-hover);
+  padding: var(--space-4);
+  border-radius: var(--radius-full);
+  margin-bottom: var(--space-4);
+  color: var(--color-text-tertiary);
+}
+
+.state-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.state-description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 400px;
+  margin: 0 auto var(--space-6);
+  line-height: var(--line-height-relaxed);
+}
+
+.state-action {
+  margin-top: var(--space-4);
+}

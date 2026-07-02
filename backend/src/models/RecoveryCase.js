@@ -15,6 +15,17 @@ const productSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const pickupAddressSchema = new mongoose.Schema(
+  {
+    line1: { type: String, required: true, trim: true },
+    line2: { type: String, trim: true, default: null },
+    city: { type: String, required: true, trim: true },
+    state: { type: String, required: true, trim: true },
+    pincode: { type: String, required: true, trim: true },
+  },
+  { _id: false },
+);
+
 const recoveryCaseSchema = new mongoose.Schema(
   {
     caseCode: { type: String, required: true, unique: true, trim: true },
@@ -22,6 +33,7 @@ const recoveryCaseSchema = new mongoose.Schema(
     retailerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     requestType: { type: String, enum: REQUEST_TYPE_VALUES, required: true },
     product: { type: productSchema, required: true },
+    pickupAddress: { type: pickupAddressSchema, required: true },
     reason: { type: String, required: true, trim: true },
     description: { type: String, trim: true, default: null },
     status: { type: String, enum: CASE_STATUS_VALUES, default: CASE_STATUSES.CASE_CREATED },

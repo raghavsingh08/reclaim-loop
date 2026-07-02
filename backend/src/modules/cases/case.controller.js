@@ -2,6 +2,7 @@ import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import {
   createCase,
+  deleteCaseForTesting,
   getCaseById,
   getCaseCustody,
   getCaseTimeline,
@@ -37,4 +38,9 @@ export const getRecoveryCaseTimeline = asyncHandler(async (req, res) => {
 export const getRecoveryCaseCustody = asyncHandler(async (req, res) => {
   const custodyRecords = await getCaseCustody(req.params.caseId, req.user);
   res.status(200).json(new ApiResponse(200, { custodyRecords }, 'Case custody history retrieved'));
+});
+
+export const deleteRecoveryCase = asyncHandler(async (req, res) => {
+  const result = await deleteCaseForTesting(req.params.caseId);
+  res.status(200).json(new ApiResponse(200, result, 'Recovery case and related test data deleted'));
 });

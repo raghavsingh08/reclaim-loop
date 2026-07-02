@@ -1,0 +1,157 @@
+.courier-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.dashboard-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.dashboard-subtitle {
+  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-6);
+}
+
+.kpi-card-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.kpi-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: var(--font-weight-bold);
+}
+
+.pickups-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.pickups-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pickup-card-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .pickup-card-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+  .pickup-actions {
+    width: 100%;
+  }
+  .pickup-actions button {
+    width: 100%;
+  }
+}
+
+.pickup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+}
+
+.status-assigned {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.status-accepted {
+  background-color: rgba(234, 179, 8, 0.1);
+  color: #eab308;
+}
+
+.status-collected {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.status-failed {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.case-id {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.pickup-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.pickup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 140px;
+}
