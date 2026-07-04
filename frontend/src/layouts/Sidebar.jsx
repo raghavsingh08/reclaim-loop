@@ -4,7 +4,6 @@ import {
   LayoutDashboard, 
   PackageSearch, 
   Wrench, 
-  RefreshCcw, 
   MapPin, 
   Settings,
   PlusCircle,

@@ -36,10 +36,8 @@ const getCompletedInspection = async (caseId, session) => {
 
 export const startDecisionReview = async (caseId, actor) => {
   requireCaseId(caseId);
-  const session = await mongoose.startSession();
-  try {
-    let updatedCase;
-    await session.withTransaction(async () => {
+  let updatedCase;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       const inspection = await getCompletedInspection(recoveryCase._id, session);
@@ -55,25 +53,22 @@ export const startDecisionReview = async (caseId, actor) => {
           inspectionId: inspection._id,
         },
       });
-    });
-    await createAdminNotifications({
+  });
+  await createAdminNotifications({
       caseId: updatedCase._id,
       type: CASE_STATUSES.DECISION_PENDING,
       title: 'Case pending decision',
       message: 'A recovery case is awaiting an administrative decision.',
       metadata: { recommendation: updatedCase.outcome },
-    });
-    EventPublisher.publishDecisionPending({
+  });
+  EventPublisher.publishDecisionPending({
       caseId: updatedCase._id.toString(),
       recommendation: updatedCase.outcome,
       actorId: actor._id.toString(),
       actorRole: actor.role,
       timestamp: new Date().toISOString(),
-    });
-    return updatedCase;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return updatedCase;
 };
 
 export const makeDecision = async (
@@ -86,11 +81,9 @@ export const makeDecision = async (
     throw new ApiError(400, `Decision must be one of: ${DECISION_TYPE_VALUES.join(', ')}`);
   }
 
-  const session = await mongoose.startSession();
-  try {
-    let decisionRecord;
-    let updatedCase;
-    await session.withTransaction(async () => {
+  let decisionRecord;
+  let updatedCase;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       const inspection = await getCompletedInspection(recoveryCase._id, session);
@@ -119,8 +112,8 @@ export const makeDecision = async (
           comments: comments?.trim() || null,
         },
       });
-    });
-    await createNotification({
+  });
+  await createNotification({
       userId: updatedCase.customerId,
       caseId: updatedCase._id,
       type: updatedCase.status,
@@ -130,8 +123,8 @@ export const makeDecision = async (
         decisionId: decisionRecord._id,
         decision: decisionRecord.decision,
       },
-    });
-    EventPublisher.publishDecisionCompleted({
+  });
+  EventPublisher.publishDecisionCompleted({
       caseId: updatedCase._id.toString(),
       decisionId: decisionRecord._id.toString(),
       decision: decisionRecord.decision,
@@ -139,11 +132,8 @@ export const makeDecision = async (
       actorId: actor._id.toString(),
       actorRole: actor.role,
       timestamp: new Date().toISOString(),
-    });
-    return { case: updatedCase, decision: decisionRecord };
-  } finally {
-    await session.endSession();
-  }
+  });
+  return { case: updatedCase, decision: decisionRecord };
 };
 
 export const getCaseDecisions = async (caseId) => {

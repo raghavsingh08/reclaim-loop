@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
-import { ArrowLeft, Clock, Package, MapPin, ClipboardList, CheckCircle, AlertTriangle } from 'lucide-react';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { ArrowLeft, Clock, Package, MapPin, ClipboardList, CheckCircle, Info } from 'lucide-react';
 import { getCaseById, getCaseTimeline, receiveCase, startInspection, completeInspection, getCaseInspection } from '../../services/inspector';
 
 function formatEventName(type) {
@@ -30,7 +32,7 @@ export function InspectorCaseDetail() {
   const [notes, setNotes] = useState('');
   const [recommendedOutcome, setRecommendedOutcome] = useState('');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [cData, tData, inspData] = await Promise.all([
@@ -46,11 +48,11 @@ export function InspectorCaseDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [caseId]);
 
   useEffect(() => {
     loadData();
-  }, [caseId]);
+  }, [loadData]);
 
   const handleAction = async (actionFn, successMsg) => {
     setSuccessMessage(null);
@@ -89,7 +91,7 @@ export function InspectorCaseDetail() {
   };
 
   if (loading && !caseData) return <LoadingState text="Loading case details..." />;
-  if (error || !caseData) return <EmptyState title="Not Found" description={error || "Case not found."} />;
+  if (error || !caseData) return <ErrorState title="Not Found" description={error || "Case not found."} />;
 
   const status = caseData.status;
   const product = caseData.product || {};
@@ -105,13 +107,13 @@ export function InspectorCaseDetail() {
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--font-weight-bold)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             {caseData.caseCode}
             <span className={`status-chip status-${status.toLowerCase()}`} style={{ fontSize: '12px' }}>
-              {status.replace(/_/g, ' ')}
+              <StatusBadge status={status} />
             </span>
           </h1>
           <p style={{ color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)', display: 'flex', gap: '16px' }}>
             <span><strong>Type:</strong> {caseData.requestType}</span>
             <span><strong>Facility:</strong> {caseData.assignedFacility?.name || 'Pending'}</span>
-            <span><strong>Assigned:</strong> {new Date(caseData.updatedAt || caseData.createdAt).toLocaleDateString()}</span>
+            <span><strong>Assigned:</strong> {formatDate(caseData.updatedAt || caseData.createdAt)}</span>
           </p>
         </div>
       </div>
@@ -122,7 +124,7 @@ export function InspectorCaseDetail() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         
         {/* Left Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -149,7 +151,7 @@ export function InspectorCaseDetail() {
                 </div>
                 <div>
                   <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Purchase Date</span>
-                  <div>{product.purchaseDate ? new Date(product.purchaseDate).toLocaleDateString() : '-'}</div>
+                  <div>{product.purchaseDate ? formatDate(product.purchaseDate) : '-'}</div>
                 </div>
                 <div>
                   <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Order ID</span>
@@ -192,7 +194,7 @@ export function InspectorCaseDetail() {
                           {formatEventName(event.type)}
                         </h4>
                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <span>{new Date(event.createdAt).toLocaleString()}</span>
+                          <span>{formatDateTime(event.createdAt)}</span>
                           <span>•</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>{event.actorRole}</span>
                         </div>
@@ -201,7 +203,7 @@ export function InspectorCaseDetail() {
                   ))}
                 </div>
               ) : (
-                <div style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>No events recorded.</div>
+                <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />
               )}
             </CardContent>
           </Card>
@@ -319,7 +321,7 @@ export function InspectorCaseDetail() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '4px' }}>
                       <span style={{ color: 'var(--color-text-secondary)' }}>Completed Time</span>
-                      <span>{inspection?.updatedAt || inspection?.completedAt ? new Date(inspection.updatedAt || inspection.completedAt).toLocaleString() : (caseData.inspectionDetails?.completedAt ? new Date(caseData.inspectionDetails.completedAt).toLocaleString() : (inspection ? '' : '-'))}</span>
+                      <span>{inspection?.updatedAt || inspection?.completedAt ? formatDateTime(inspection.updatedAt || inspection.completedAt) : (caseData.inspectionDetails?.completedAt ? formatDateTime(caseData.inspectionDetails.completedAt) : (inspection ? '' : '-'))}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--color-text-secondary)' }}>Inspector Name</span>

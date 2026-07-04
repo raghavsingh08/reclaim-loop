@@ -5,6 +5,7 @@ import { Card, CardHeader, CardContent, CardFooter } from '../../components/ui/C
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ArrowLeft } from 'lucide-react';
+import './CreateCase.css';
 
 const initialForm = {
   requestType: 'REFUND',
@@ -85,7 +86,7 @@ export function CreateCase() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+    <div className="create-case-wrapper">
       
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
         <Button variant="ghost" onClick={() => navigate('/customer/cases')} style={{ padding: 'var(--space-2)' }}>
@@ -112,36 +113,58 @@ export function CreateCase() {
       )}
 
       <form onSubmit={handleSubmit}>
-        <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <CardHeader title="Request Type" />
+        <Card className="create-case-section">
+          <CardHeader title="Request Information" />
           <CardContent>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 'var(--font-weight-medium)' }}>What kind of support do you need?</label>
-              <select 
-                name="requestType" 
-                value={formData.requestType ?? 'REFUND'} 
-                onChange={handleChange}
-                style={{
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  backgroundColor: 'var(--color-bg-app)',
-                  fontSize: 'var(--font-size-md)',
-                  color: 'var(--color-text)'
-                }}
-              >
-                <option value="REFUND">Refund</option>
-                <option value="REPAIR">Repair</option>
-                <option value="EXCHANGE">Exchange</option>
-                <option value="RECYCLE">Recycle</option>
-              </select>
+              <div className="desktop-request-select">
+                <select 
+                  name="requestType" 
+                  value={formData.requestType ?? 'REFUND'} 
+                  onChange={handleChange}
+                  style={{
+                    padding: 'var(--space-2) var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--color-bg-app)',
+                    fontSize: 'var(--font-size-md)',
+                    color: 'var(--color-text)',
+                    width: '100%'
+                  }}
+                >
+                  <option value="REFUND">Refund</option>
+                  <option value="REPAIR">Repair</option>
+                  <option value="EXCHANGE">Exchange</option>
+                  <option value="RECYCLE">Recycle</option>
+                </select>
+              </div>
+
+              <div className="mobile-request-cards">
+                {[
+                  { value: 'REFUND', title: 'Refund', desc: 'Request money back after inspection' },
+                  { value: 'REPAIR', title: 'Repair', desc: 'Send item for repair assessment' },
+                  { value: 'EXCHANGE', title: 'Exchange', desc: 'Request a replacement item' },
+                  { value: 'RECYCLE', title: 'Recycle', desc: 'Send item for responsible disposal' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`request-card ${(formData.requestType ?? 'REFUND') === opt.value ? 'selected' : ''}`}
+                    onClick={() => handleChange({ target: { name: 'requestType', value: opt.value } })}
+                  >
+                    <span className="request-card-title">{opt.title}</span>
+                    <span className="request-card-desc">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <CardHeader title="Product Details" />
-          <CardContent style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <Card className="create-case-section">
+          <CardHeader title="Product Information" />
+          <CardContent className="product-details-grid">
             <Input 
               label="Product Name" 
               name="product.name" 
@@ -167,6 +190,12 @@ export function CreateCase() {
               value={formData.product.serialNumber ?? ''} 
               onChange={handleChange} 
             />
+          </CardContent>
+        </Card>
+
+        <Card className="create-case-section">
+          <CardHeader title="Purchase Information" />
+          <CardContent className="product-details-grid">
             <Input 
               label="Order ID (Optional)" 
               name="product.orderId" 
@@ -183,9 +212,9 @@ export function CreateCase() {
           </CardContent>
         </Card>
 
-        <Card style={{ marginBottom: 'var(--space-6)' }}>
+        <Card className="create-case-section">
           <CardHeader title="Pickup Address" />
-          <CardContent style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-4)' }}>
+          <CardContent className="single-column-grid">
             <Input 
               label="Address Line 1" 
               name="pickupAddress.line1" 
@@ -201,7 +230,7 @@ export function CreateCase() {
               onChange={handleChange} 
               placeholder="Locality, Area, Landmark"
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)' }}>
+            <div className="address-details-grid">
               <Input 
                 label="City" 
                 name="pickupAddress.city" 
@@ -227,9 +256,9 @@ export function CreateCase() {
           </CardContent>
         </Card>
 
-        <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <CardHeader title="Case Details" />
-          <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <Card className="create-case-section">
+          <CardHeader title="Issue Details" />
+          <CardContent className="mobile-spaced-flex">
             <Input 
               label="Reason for Request" 
               name="reason" 

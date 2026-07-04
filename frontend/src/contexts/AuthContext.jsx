@@ -13,12 +13,9 @@ export function AuthProvider({ children }) {
       if (token) {
         try {
           const response = await api.get('/auth/me');
-          console.log('[AuthContext] /auth/me raw response:', response);
-          console.log('[AuthContext] /auth/me response.data:', response.data);
           const payload = response.data?.data || response.data;
           setUser(payload?.user || payload);
         } catch (error) {
-          console.error('Failed to fetch user', error);
           localStorage.removeItem('token');
         }
       }
@@ -30,8 +27,6 @@ export function AuthProvider({ children }) {
 
   const login = async (credentials) => {
     const response = await api.post('/auth/login', credentials);
-    console.log('[AuthContext] /auth/login raw response:', response);
-    console.log('[AuthContext] /auth/login response.data:', response.data);
     
     const payload = response.data?.data || response.data;
     const token = payload?.token || payload?.accessToken || payload?.jwt;
@@ -43,8 +38,6 @@ export function AuthProvider({ children }) {
 
   const register = async (data) => {
     const response = await api.post('/auth/register', data);
-    console.log('[AuthContext] /auth/register raw response:', response);
-    console.log('[AuthContext] /auth/register response.data:', response.data);
     
     const payload = response.data?.data || response.data;
     const token = payload?.token || payload?.accessToken || payload?.jwt;

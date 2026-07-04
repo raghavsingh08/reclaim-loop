@@ -1,0 +1,126 @@
+/* Mobile Layout Consistency Layer */
+
+.mobile-only {
+  display: none !important;
+}
+
+.desktop-only {
+  display: block !important;
+}
+
+/* 1. Page hero pattern */
+.page-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* 2. Mobile table replacement pattern (Responsive Containers) */
+.mobile-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.mobile-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-app);
+  cursor: pointer;
+}
+
+.mobile-list-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.mobile-list-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mobile-list-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+}
+
+.mobile-list-card-label {
+  color: var(--color-text-secondary);
+}
+
+/* 3. Mobile metric card pattern */
+.metric-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.metric-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--color-text-secondary);
+}
+
+/* Responsive Overrides (< 768px strictly) */
+@media (max-width: 768px) {
+  .mobile-only {
+    display: flex !important;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  /* 1. Page hero pattern */
+  .page-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-5);
+  }
+  
+  .page-hero-actions {
+    width: 100%;
+  }
+
+  .page-hero-actions button,
+  .page-hero-actions .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px; /* Touch target size */
+  }
+
+  /* 3. Mobile metric card pattern */
+  .metric-card-content {
+    align-items: flex-start;
+  }
+
+  .metric-card-header {
+    width: 100%;
+    margin-bottom: var(--space-1);
+  }
+  
+  /* 5. Bottom navigation safety */
+  .dashboard-content-wrapper {
+    padding-bottom: 100px !important;
+  }
+  
+  /* 6. Spacing rules */
+  .mobile-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+}

@@ -35,18 +35,14 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
   requireObjectId(caseId, 'case ID');
   requireObjectId(inspectorId, 'inspector ID');
 
-  const session = await mongoose.startSession();
-  try {
-    let inspection;
-    await session.withTransaction(async () => {
-      const [recoveryCase, inspector] = await Promise.all([
-        RecoveryCase.findById(caseId).session(session),
-        User.findOne({
-          _id: inspectorId,
-          role: USER_ROLES.INSPECTOR,
-          isActive: true,
-        }).session(session),
-      ]);
+  let inspection;
+  await CaseEngine.runInTransaction(async (session) => {
+      const recoveryCase = await RecoveryCase.findById(caseId).session(session);
+      const inspector = await User.findOne({
+        _id: inspectorId,
+        role: USER_ROLES.INSPECTOR,
+        isActive: true,
+      }).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (!inspector) throw new ApiError(400, 'Inspector must be an active INSPECTOR user');
       if (
@@ -112,9 +108,9 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
           previousStatus,
         },
       });
-    });
+  });
 
-    await createNotification({
+  await createNotification({
       userId: inspection.inspectorId,
       caseId: inspection.caseId,
       type: CASE_STATUSES.INSPECTION_ASSIGNED,
@@ -124,19 +120,14 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
         inspectionId: inspection._id,
         facilityId: inspection.facilityId,
       },
-    });
-    return inspection;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return inspection;
 };
 
 export const startInspection = async (caseId, actor) => {
   requireObjectId(caseId, 'case ID');
-  const session = await mongoose.startSession();
-  try {
-    let inspection;
-    await session.withTransaction(async () => {
+  let inspection;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (recoveryCase.status !== CASE_STATUSES.INSPECTION_ASSIGNED) {
@@ -170,19 +161,16 @@ export const startInspection = async (caseId, actor) => {
           previousStatus: CASE_STATUSES.INSPECTION_ASSIGNED,
         },
       });
-    });
+  });
 
-    EventPublisher.publishInspectionStarted({
+  EventPublisher.publishInspectionStarted({
       caseId: inspection.caseId.toString(),
       inspectionId: inspection._id.toString(),
       inspectorId: inspection.inspectorId.toString(),
       facilityId: inspection.facilityId.toString(),
       timestamp: new Date().toISOString(),
-    });
-    return inspection;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return inspection;
 };
 
 export const completeInspection = async (
@@ -204,11 +192,9 @@ export const completeInspection = async (
     throw new ApiError(400, 'Images must be an array of objects containing a URL');
   }
 
-  const session = await mongoose.startSession();
-  try {
-    let inspection;
-    let customerId;
-    await session.withTransaction(async () => {
+  let inspection;
+  let customerId;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (recoveryCase.status !== CASE_STATUSES.INSPECTION_PENDING) {
@@ -243,9 +229,9 @@ export const completeInspection = async (
         actorRole: actor.role,
         metadata: { condition, recommendedOutcome },
       });
-    });
+  });
 
-    await Promise.all([
+  await Promise.all([
       createNotification({
         userId: customerId,
         caseId: inspection.caseId,
@@ -261,8 +247,8 @@ export const completeInspection = async (
         message: 'A completed inspection is ready for an administrative decision.',
         metadata: { inspectionId: inspection._id, recommendedOutcome },
       }),
-    ]);
-    EventPublisher.publishInspectionCompleted({
+  ]);
+  EventPublisher.publishInspectionCompleted({
       caseId: inspection.caseId.toString(),
       inspectionId: inspection._id.toString(),
       inspectorId: inspection.inspectorId.toString(),
@@ -270,11 +256,8 @@ export const completeInspection = async (
       condition: inspection.condition,
       recommendedOutcome: inspection.recommendedOutcome,
       timestamp: new Date().toISOString(),
-    });
-    return inspection;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return inspection;
 };
 
 export const getInspectionByCase = async (caseId, actor) => {

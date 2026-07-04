@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getFacilities } from '../../services/admin';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { Building } from 'lucide-react';
 
 export function AdminFacilities() {
@@ -17,7 +17,7 @@ export function AdminFacilities() {
   }, []);
 
   if (loading) return <LoadingState text="Loading facilities..." />;
-  if (error) return <EmptyState title="Failed to load facilities" description={error} />;
+  if (error) return <ErrorState title="Failed to load facilities" description={error} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -28,7 +28,7 @@ export function AdminFacilities() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-4)' }}>
         {facilities.length > 0 ? (
           facilities.map((fac) => {
             const capacityTotal = fac.capacity?.total ?? 0;

@@ -21,10 +21,8 @@ export const approveRefund = async (caseId, { amount, reason }, actor) => {
   }
   if (!reason?.trim()) throw new ApiError(400, 'Reason is required');
 
-  const session = await mongoose.startSession();
-  try {
-    let updatedCase;
-    await session.withTransaction(async () => {
+  let updatedCase;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
 
@@ -36,27 +34,24 @@ export const approveRefund = async (caseId, { amount, reason }, actor) => {
         actorRole: actor.role,
         metadata: { amount, reason: reason.trim() },
       });
-    });
-    await createNotification({
+  });
+  await createNotification({
       userId: updatedCase.customerId,
       caseId: updatedCase._id,
       type: CASE_STATUSES.REFUND_APPROVED,
       title: 'Refund approved',
       message: 'Your refund request was approved.',
       metadata: { amount, reason: reason.trim() },
-    });
-    EventPublisher.publishRefundApproved({
+  });
+  EventPublisher.publishRefundApproved({
       caseId: updatedCase._id.toString(),
       amount,
       reason: reason.trim(),
       actorId: actor._id.toString(),
       actorRole: actor.role,
       timestamp: new Date().toISOString(),
-    });
-    return updatedCase;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return updatedCase;
 };
 
 export const recordRefund = async (
@@ -72,11 +67,9 @@ export const recordRefund = async (
     throw new ApiError(400, 'Currency must be a non-empty string');
   }
 
-  const session = await mongoose.startSession();
-  try {
-    let ledgerEntry;
-    let updatedCase;
-    await session.withTransaction(async () => {
+  let ledgerEntry;
+  let updatedCase;
+  await CaseEngine.runInTransaction(async (session) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
 
@@ -126,8 +119,8 @@ export const recordRefund = async (
         actorRole: actor.role,
         metadata: { ledgerEntryId: ledgerEntry._id },
       });
-    });
-    await createNotification({
+  });
+  await createNotification({
       userId: updatedCase.customerId,
       caseId: updatedCase._id,
       type: CASE_STATUSES.REFUND_RECORDED,
@@ -138,8 +131,8 @@ export const recordRefund = async (
         amount: ledgerEntry.amount,
         currency: ledgerEntry.currency,
       },
-    });
-    EventPublisher.publishRefundRecorded({
+  });
+  EventPublisher.publishRefundRecorded({
       caseId: updatedCase._id.toString(),
       ledgerEntryId: ledgerEntry._id.toString(),
       amount: ledgerEntry.amount,
@@ -147,11 +140,8 @@ export const recordRefund = async (
       actorId: actor._id.toString(),
       actorRole: actor.role,
       timestamp: new Date().toISOString(),
-    });
-    return { case: updatedCase, ledgerEntry };
-  } finally {
-    await session.endSession();
-  }
+  });
+  return { case: updatedCase, ledgerEntry };
 };
 
 export const getRefundEntries = async (caseId) => {

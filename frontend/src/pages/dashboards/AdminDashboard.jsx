@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { formatDate, formatTime } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { getAdminDashboard, listAllCases, getFacilities } from '../../services/admin';
 import { getNotifications, markNotificationAsRead } from '../../services/notifications';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Package, Activity, CheckCircle, Clock, DollarSign, AlertCircle, Building, Bell, Info, ArrowRight, User as UserIcon, Check } from 'lucide-react';
 import './AdminDashboard.css';
 
@@ -47,12 +49,11 @@ export function AdminDashboard() {
       await markNotificationAsRead(id);
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
     } catch (err) {
-      console.error(err);
     }
   };
 
   if (loading) return <LoadingState text="Loading Operations Center..." />;
-  if (error) return <EmptyState title="Failed to load" description={error} />;
+  if (error) return <ErrorState title="Failed to load" description={error} />;
 
   const pendingDecisionsCases = allCases.filter(c => c.status === 'DECISION_PENDING');
   const unreadNotifications = notifications.filter(n => !n.isRead).slice(0, 5); // top 5 unread
@@ -67,7 +68,7 @@ export function AdminDashboard() {
       </div>
 
       {/* KPI Cards Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 'var(--space-4)' }}>
         <MetricCard title="Total Cases" value={data.totalCases} icon={<Package size={18} />} />
         <MetricCard title="Active Cases" value={data.activeCases} icon={<Activity size={18} />} />
         <MetricCard title="Completed" value={data.completedCases} icon={<CheckCircle size={18} />} />
@@ -77,7 +78,7 @@ export function AdminDashboard() {
       </div>
 
       {/* Main Grid Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', gap: 'var(--space-6)' }}>
         
         {/* Left Column (Takes up more space natively if grid expands, but here it's auto-fit so it behaves responsively) */}
         <div className="admin-left-col">
@@ -102,7 +103,7 @@ export function AdminDashboard() {
                         <tr key={c._id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                           <td style={{ padding: 'var(--space-3)', fontWeight: 'var(--font-weight-medium)' }}>{c.caseCode}</td>
                           <td style={{ padding: 'var(--space-3)' }}>{c.product?.name}</td>
-                          <td style={{ padding: 'var(--space-3)' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
+                          <td style={{ padding: 'var(--space-3)' }}>{formatDate(c.createdAt)}</td>
                           <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
                             <Button variant="outline" size="sm" onClick={() => navigate(`/admin/cases/${c._id}`)}>Review</Button>
                           </td>
@@ -145,7 +146,7 @@ export function AdminDashboard() {
                               fontSize: '12px',
                               fontWeight: 'var(--font-weight-medium)'
                             }}>
-                              {rcase.status.replace(/_/g, ' ')}
+                              <StatusBadge status={rcase.status} />
                             </span>
                           </td>
                           <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
@@ -166,7 +167,7 @@ export function AdminDashboard() {
         </div>
 
         {/* Right Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: '320px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 'min(100%, 320px)' }}>
           
           {/* Facility Summary Card */}
           <Card>
@@ -222,7 +223,7 @@ export function AdminDashboard() {
                           {formatEventName(event.type)}
                         </h4>
                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <span>{new Date(event.createdAt).toLocaleTimeString()}</span>
+                          <span>{formatTime(event.createdAt)}</span>
                           <span>•</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '2px' }}><UserIcon size={12} /> {event.actorRole}</span>
                         </div>

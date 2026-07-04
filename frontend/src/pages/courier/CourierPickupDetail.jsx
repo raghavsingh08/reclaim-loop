@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { formatDateTime, formatTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
-import { ArrowLeft, Clock, User as UserIcon, CheckCircle, Package } from 'lucide-react';
-import { getPickupDetail, getPickupTimeline, acceptPickup, collectPickup, deliverPickup, getMyPickups } from '../../services/courier';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { ArrowLeft, Clock, User as UserIcon, CheckCircle, Package, Info } from 'lucide-react';
+import { getPickupDetail, getPickupTimeline, acceptPickup, collectPickup, deliverPickup } from '../../services/courier';
 
 function formatEventName(type) {
   if (!type) return 'Unknown Event';
@@ -24,7 +26,7 @@ export function CourierPickupDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getPickupDetail(pickupId);
@@ -40,11 +42,11 @@ export function CourierPickupDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pickupId]);
 
   useEffect(() => {
     loadData();
-  }, [pickupId]);
+  }, [loadData]);
 
   const handleAction = async (actionFn, successMsg) => {
     setSuccessMessage(null);
@@ -68,7 +70,7 @@ export function CourierPickupDetail() {
   );
 
   if (loading && !pickup) return <LoadingState text="Loading pickup details..." />;
-  if (error || !pickup) return <EmptyState title="Not Found" description={error || "Pickup not found."} />;
+  if (error || !pickup) return <ErrorState title="Not Found" description={error || "Pickup not found."} />;
 
   const status = pickup.status;
   const caseData = pickup.caseData || {}; // from fallback
@@ -96,7 +98,7 @@ export function CourierPickupDetail() {
             </span>
           </h1>
           <p style={{ color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>
-            Scheduled: {new Date(pickup.scheduledWindow?.start).toLocaleString()} - {new Date(pickup.scheduledWindow?.end).toLocaleTimeString()}
+            Scheduled: {formatDateTime(pickup.scheduledWindow?.start)} - {formatTime(pickup.scheduledWindow?.end)}
           </p>
         </div>
       </div>
@@ -107,7 +109,7 @@ export function CourierPickupDetail() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         
         {/* Left Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -159,7 +161,7 @@ export function CourierPickupDetail() {
               </div>
               <div>
                 <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Case Status</span>
-                <div>{caseData.status ? caseData.status.replace(/_/g, ' ') : '-'}</div>
+                <div>{caseData.status ? <StatusBadge status={caseData.status} /> : '-'}</div>
               </div>
             </CardContent>
           </Card>
@@ -243,7 +245,7 @@ export function CourierPickupDetail() {
                           {formatEventName(event.type)}
                         </h4>
                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <span>{new Date(event.createdAt).toLocaleString()}</span>
+                          <span>{formatDateTime(event.createdAt)}</span>
                           <span>•</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><UserIcon size={12} /> {event.actorRole}</span>
                         </div>
@@ -252,7 +254,7 @@ export function CourierPickupDetail() {
                   ))}
                 </div>
               ) : (
-                <div style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>No events recorded.</div>
+                <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />
               )}
             </CardContent>
           </Card>

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getCaseById, getCaseTimeline } from '../../services/customer';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ArrowLeft, Clock, Info, User as UserIcon } from 'lucide-react';
 
 // Format technical event names (e.g. PICKUP_ASSIGNED -> Pickup Assigned)
@@ -37,7 +39,7 @@ export function CaseDetail() {
   }, [caseId]);
 
   if (loading) return <LoadingState text="Loading case details..." />;
-  if (error || !data) return <EmptyState title="Case not found" description={error || "Could not load the requested case."} action={<Button onClick={() => navigate('/customer/cases')}>Back to Cases</Button>} />;
+  if (error || !data) return <ErrorState title="Case not found" description={error || "Could not load the requested case."} action={<Button onClick={() => navigate('/customer/cases')}>Back to Cases</Button>} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -58,17 +60,17 @@ export function CaseDetail() {
                 fontSize: '12px',
                 fontWeight: 'var(--font-weight-medium)'
               }}>
-                {data.status.replace(/_/g, ' ')}
+                <StatusBadge status={data.status} />
               </span>
             </h1>
             <p style={{ color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>
-              Created on {new Date(data.createdAt).toLocaleDateString()}
+              Created on {formatDate(data.createdAt)}
             </p>
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         
         {/* Left Column: Details */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -92,7 +94,7 @@ export function CaseDetail() {
               <DetailRow label="Order ID" value={data.product?.orderId || '-'} />
               <DetailRow 
                 label="Purchase Date" 
-                value={data.product?.purchaseDate ? new Date(data.product.purchaseDate).toLocaleDateString() : '-'} 
+                value={data.product?.purchaseDate ? formatDate(data.product.purchaseDate) : '-'} 
               />
             </CardContent>
           </Card>
@@ -157,7 +159,7 @@ export function CaseDetail() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--space-2)' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Clock size={14} />
-                          {new Date(event.createdAt).toLocaleString()}
+                          {formatDateTime(event.createdAt)}
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <UserIcon size={14} />

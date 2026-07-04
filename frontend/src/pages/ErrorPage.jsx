@@ -7,7 +7,6 @@ export function ErrorPage() {
   const error = useRouteError();
   const navigate = useNavigate();
   
-  console.error(error);
 
   return (
     <div style={{

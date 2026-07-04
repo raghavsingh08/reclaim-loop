@@ -5,7 +5,6 @@ export const getInspectorDashboard = async () => {
     const response = await api.get('/dashboard/inspector');
     return response.data?.data || response.data;
   } catch (error) {
-    console.log("Inspector dashboard error response:", error.response?.data || error.message);
     if (error.response?.status === 400 || error.response?.status === 404) {
       return { pendingInspections: 0, completedInspections: 0 };
     }
@@ -16,10 +15,8 @@ export const getInspectorDashboard = async () => {
 export const getMyInspections = async () => {
   try {
     const response = await api.get('/inspections/my');
-    console.log("DEV: GET /api/inspections/my response", response.data);
     return response.data?.data?.inspections || response.data?.data || response.data || [];
   } catch (error) {
-    console.log("My inspections error response:", error.response?.data || error.message);
     if (error.response?.status === 400 || error.response?.status === 404) {
       return [];
     }
@@ -61,7 +58,6 @@ export const completeInspection = async (caseId, data) => {
 export const getCaseInspection = async (caseId) => {
   try {
     const response = await api.get(`/inspections/${caseId}`);
-    console.log("Inspection detail", response.data);
     return response.data?.data?.inspection || response.data?.data || response.data || null;
   } catch (err) {
     if (err.response?.status === 400 || err.response?.status === 404) return null;

@@ -49,15 +49,18 @@ export const assignPickup = async (input, actor) => {
     throw new ApiError(400, 'Scheduled window must contain valid dates with end after start');
   }
 
-  const session = await mongoose.startSession();
-  try {
-    let assignedPickup;
-    await session.withTransaction(async () => {
-      const [recoveryCase, courier, facility] = await Promise.all([
-        RecoveryCase.findById(caseId).session(session),
-        User.findOne({ _id: courierId, role: USER_ROLES.COURIER, isActive: true }).session(session),
-        Facility.findOne({ _id: facilityId, isActive: true }).session(session),
-      ]);
+  let assignedPickup;
+  await CaseEngine.runInTransaction(async (session) => {
+      const recoveryCase = await RecoveryCase.findById(caseId).session(session);
+      const courier = await User.findOne({
+        _id: courierId,
+        role: USER_ROLES.COURIER,
+        isActive: true,
+      }).session(session);
+      const facility = await Facility.findOne({
+        _id: facilityId,
+        isActive: true,
+      }).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (!recoveryCase.pickupAddress) throw new ApiError(400, 'Recovery case is missing a pickup address. Cannot assign courier.');
       if (!courier) throw new ApiError(400, 'Courier must be an active COURIER user');
@@ -93,8 +96,8 @@ export const assignPickup = async (input, actor) => {
           previousStatus: CASE_STATUSES.CASE_CREATED,
         },
       });
-    });
-    await Promise.all([
+  });
+  await Promise.all([
       createNotification({
         userId: assignedPickup.courierId,
         caseId: assignedPickup.caseId,
@@ -111,26 +114,21 @@ export const assignPickup = async (input, actor) => {
         message: 'A courier has been assigned to collect your item.',
         metadata: { pickupId: assignedPickup._id },
       }),
-    ]);
-    EventPublisher.publishPickupAssigned({
+  ]);
+  EventPublisher.publishPickupAssigned({
       caseId: assignedPickup.caseId.toString(),
       pickupId: assignedPickup._id.toString(),
       customerId: assignedPickup.customerId.toString(),
       courierId: assignedPickup.courierId.toString(),
       status: assignedPickup.status,
       timestamp: new Date().toISOString(),
-    });
-    return assignedPickup;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return assignedPickup;
 };
 
 export const acceptPickup = async (pickupId, courier) => {
-  const session = await mongoose.startSession();
-  try {
-    let acceptedPickup;
-    await session.withTransaction(async () => {
+  let acceptedPickup;
+  await CaseEngine.runInTransaction(async (session) => {
       const pickup = await getCourierPickup(pickupId, courier._id, session);
       if (pickup.status !== PICKUP_STATUSES.ASSIGNED) {
         throw new ApiError(409, 'Only an assigned pickup can be accepted');
@@ -150,34 +148,29 @@ export const acceptPickup = async (pickupId, courier) => {
           previousStatus: CASE_STATUSES.PICKUP_ASSIGNED,
         },
       });
-    });
-    await createNotification({
+  });
+  await createNotification({
       userId: acceptedPickup.customerId,
       caseId: acceptedPickup.caseId,
       type: CASE_STATUSES.PICKUP_ACCEPTED,
       title: 'Courier accepted pickup',
       message: 'The assigned courier accepted your pickup.',
       metadata: { pickupId: acceptedPickup._id },
-    });
-    EventPublisher.publishPickupAccepted({
+  });
+  EventPublisher.publishPickupAccepted({
       caseId: acceptedPickup.caseId.toString(),
       pickupId: acceptedPickup._id.toString(),
       customerId: acceptedPickup.customerId.toString(),
       courierId: acceptedPickup.courierId.toString(),
       status: acceptedPickup.status,
       timestamp: new Date().toISOString(),
-    });
-    return acceptedPickup;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return acceptedPickup;
 };
 
 export const collectPickup = async (pickupId, { proof } = {}, courier) => {
-  const session = await mongoose.startSession();
-  try {
-    let collectedPickup;
-    await session.withTransaction(async () => {
+  let collectedPickup;
+  await CaseEngine.runInTransaction(async (session) => {
       const pickup = await getCourierPickup(pickupId, courier._id, session);
       if (pickup.status !== PICKUP_STATUSES.ACCEPTED) {
         throw new ApiError(409, 'Only an accepted pickup can be collected');
@@ -214,8 +207,8 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         }],
         { session },
       );
-    });
-    await Promise.all([
+  });
+  await Promise.all([
       createNotification({
         userId: collectedPickup.customerId,
         caseId: collectedPickup.caseId,
@@ -231,26 +224,21 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         message: 'A recovery item was collected by its courier.',
         metadata: { pickupId: collectedPickup._id },
       }),
-    ]);
-    EventPublisher.publishPickupCollected({
+  ]);
+  EventPublisher.publishPickupCollected({
       caseId: collectedPickup.caseId.toString(),
       pickupId: collectedPickup._id.toString(),
       customerId: collectedPickup.customerId.toString(),
       courierId: collectedPickup.courierId.toString(),
       status: collectedPickup.status,
       timestamp: new Date().toISOString(),
-    });
-    return collectedPickup;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return collectedPickup;
 };
 
 export const deliverPickup = async (pickupId, { proof } = {}, courier) => {
-  const session = await mongoose.startSession();
-  try {
-    let deliveredPickup;
-    await session.withTransaction(async () => {
+  let deliveredPickup;
+  await CaseEngine.runInTransaction(async (session) => {
       const pickup = await getCourierPickup(pickupId, courier._id, session);
       if (pickup.status !== PICKUP_STATUSES.COLLECTED) {
         throw new ApiError(409, 'Only a collected pickup can be delivered');
@@ -285,18 +273,13 @@ export const deliverPickup = async (pickupId, { proof } = {}, courier) => {
         },
       });
       // Do not create custody record yet. That happens when facility receives it.
-    });
-    return deliveredPickup;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return deliveredPickup;
 };
 
 export const failPickup = async (pickupId, { reason } = {}, courier) => {
-  const session = await mongoose.startSession();
-  try {
-    let failedPickup;
-    await session.withTransaction(async () => {
+  let failedPickup;
+  await CaseEngine.runInTransaction(async (session) => {
       const pickup = await getCourierPickup(pickupId, courier._id, session);
       if (![PICKUP_STATUSES.ASSIGNED, PICKUP_STATUSES.ACCEPTED].includes(pickup.status)) {
         throw new ApiError(409, 'Only an assigned or accepted pickup can be failed');
@@ -318,11 +301,8 @@ export const failPickup = async (pickupId, { reason } = {}, courier) => {
           ...(reason && { reason }),
         },
       });
-    });
-    return failedPickup;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return failedPickup;
 };
 
 export const getMyPickups = (courier) =>

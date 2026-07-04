@@ -7,7 +7,6 @@ import {
   getCaseCustody,
   getCaseTimeline,
   listCases,
-  updateCaseStatus,
 } from './case.service.js';
 
 export const createRecoveryCase = asyncHandler(async (req, res) => {
@@ -23,11 +22,6 @@ export const getRecoveryCases = asyncHandler(async (req, res) => {
 export const getRecoveryCase = asyncHandler(async (req, res) => {
   const recoveryCase = await getCaseById(req.params.caseId, req.user);
   res.status(200).json(new ApiResponse(200, { case: recoveryCase }, 'Recovery case retrieved'));
-});
-
-export const changeRecoveryCaseStatus = asyncHandler(async (req, res) => {
-  const recoveryCase = await updateCaseStatus(req.params.caseId, req.body, req.user);
-  res.status(200).json(new ApiResponse(200, { case: recoveryCase }, 'Case status updated'));
 });
 
 export const getRecoveryCaseTimeline = asyncHandler(async (req, res) => {

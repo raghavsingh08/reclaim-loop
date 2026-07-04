@@ -70,14 +70,13 @@ export const receiveCaseAtFacility = async (facilityId, caseId, { proof } = {}, 
   requireObjectId(facilityId, 'facility ID');
   requireObjectId(caseId, 'case ID');
 
-  const session = await mongoose.startSession();
-  try {
-    let updatedCase;
-    await session.withTransaction(async () => {
-      const [facility, recoveryCase] = await Promise.all([
-        Facility.findOne({ _id: facilityId, isActive: true }).session(session),
-        RecoveryCase.findById(caseId).session(session),
-      ]);
+  let updatedCase;
+  await CaseEngine.runInTransaction(async (session) => {
+      const facility = await Facility.findOne({
+        _id: facilityId,
+        isActive: true,
+      }).session(session);
+      const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!facility) throw new ApiError(404, 'Active facility not found');
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (![CASE_STATUSES.DELIVERED_TO_FACILITY, CASE_STATUSES.ITEM_COLLECTED].includes(recoveryCase.status)) {
@@ -121,17 +120,14 @@ export const receiveCaseAtFacility = async (facilityId, caseId, { proof } = {}, 
         }],
         { session },
       );
-    });
-    await createNotification({
+  });
+  await createNotification({
       userId: updatedCase.customerId,
       caseId: updatedCase._id,
       type: CASE_STATUSES.FACILITY_RECEIVED,
       title: 'Item received at facility',
       message: 'Your item was received at the assigned recovery facility.',
       metadata: { facilityId },
-    });
-    return updatedCase;
-  } finally {
-    await session.endSession();
-  }
+  });
+  return updatedCase;
 };

@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { 
   Package, 
   User as UserIcon,
@@ -11,7 +13,9 @@ import {
   ArrowLeft,
   CheckCircle,
   AlertCircle,
-  DollarSign
+  DollarSign,
+  Info,
+  ClipboardList
 } from 'lucide-react';
 import { 
   getCaseById, 
@@ -30,7 +34,6 @@ import {
   deleteCase,
   getCaseInspection
 } from '../../services/admin';
-import { ClipboardList } from 'lucide-react';
 import './AdminCaseDetail.css';
 
 function formatEventName(type) {
@@ -69,7 +72,7 @@ export function AdminCaseDetail() {
     start: '', end: ''
   });
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [cData, tData, dData, rData, fData, iData, inspData] = await Promise.all([
@@ -94,11 +97,11 @@ export function AdminCaseDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [caseId]);
 
   useEffect(() => {
     loadData();
-  }, [caseId]);
+  }, [loadData]);
 
   const handleAction = async (actionFn, payload = null) => {
     setActionError(null);
@@ -178,7 +181,7 @@ export function AdminCaseDetail() {
 
 
   if (loading && !caseData) return <LoadingState text="Loading case details..." />;
-  if (error) return <EmptyState title="Error" description={error} />;
+  if (error) return <ErrorState title="Error" description={error} />;
   if (!caseData) return <EmptyState title="Not Found" description="Case not found" />;
 
   const status = caseData.status;
@@ -203,12 +206,12 @@ export function AdminCaseDetail() {
                 fontWeight: 'var(--font-weight-medium)',
                 letterSpacing: '0.5px'
               }}>
-                {status.replace(/_/g, ' ')}
+                <StatusBadge status={status} />
               </span>
             </h1>
           </div>
           <p style={{ color: 'var(--color-text-secondary)', marginLeft: '44px' }}>
-            {caseData.requestType} • Created {new Date(caseData.createdAt).toLocaleDateString()}
+            {caseData.requestType} • Created {formatDate(caseData.createdAt)}
           </p>
         </div>
       </div>
@@ -219,7 +222,7 @@ export function AdminCaseDetail() {
         {/* Left Column (Data) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-6)' }}>
             {/* Product Details */}
             <Card>
               <CardHeader title="Product Information" icon={<Package size={18} />} />
@@ -292,7 +295,7 @@ export function AdminCaseDetail() {
               <CardContent>
                 {inspection ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'var(--space-4)' }}>
                       <div>
                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Condition</span>
                         <div style={{ fontWeight: 'var(--font-weight-medium)' }}>{inspection.condition || '-'}</div>
@@ -303,7 +306,7 @@ export function AdminCaseDetail() {
                       </div>
                       <div>
                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Completed Time</span>
-                        <div>{inspection.status === 'COMPLETED' ? new Date(inspection.updatedAt).toLocaleString() : '-'}</div>
+                        <div>{inspection.status === 'COMPLETED' ? formatDateTime(inspection.updatedAt) : '-'}</div>
                       </div>
                       <div>
                         <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Inspector Name</span>
@@ -330,7 +333,7 @@ export function AdminCaseDetail() {
                     )}
                   </div>
                 ) : (
-                  <div style={{ color: 'var(--color-text-secondary)', fontSize: '14px' }}>No inspection records found.</div>
+                  <EmptyState icon={ClipboardList} title="No Inspection" description="No inspection records found." />
                 )}
               </CardContent>
             </Card>
@@ -345,7 +348,7 @@ export function AdminCaseDetail() {
                   <div key={d._id} style={{ padding: 'var(--space-3)', backgroundColor: 'var(--color-bg-app)', borderRadius: 'var(--radius-md)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
                       <span style={{ fontWeight: 'var(--font-weight-bold)' }}>{d.decision.replace(/_/g, ' ')}</span>
-                      <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>{new Date(d.createdAt).toLocaleString()}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>{formatDateTime(d.createdAt)}</span>
                     </div>
                     {d.reason && <div style={{ fontSize: '14px', marginBottom: '4px' }}><strong>Reason:</strong> {d.reason}</div>}
                     {(d.notes || d.comments) && <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}><strong>Internal Notes:</strong> {d.notes || d.comments}</div>}
@@ -371,9 +374,9 @@ export function AdminCaseDetail() {
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'grid', gridTemplateColumns: '1fr', gap: '4px' }}>
                       {r.approvedBy && <div><strong>Approved By:</strong> {r.approvedBy?.name || r.approvedBy}</div>}
                       {r.referenceNumber && <div><strong>Reference:</strong> {r.referenceNumber}</div>}
-                      {r.approvedAt && <div><strong>Approved Time:</strong> {new Date(r.approvedAt).toLocaleString()}</div>}
-                      {r.recordedAt && <div><strong>Recorded Time:</strong> {new Date(r.recordedAt).toLocaleString()}</div>}
-                      {r.createdAt && !r.approvedAt && !r.recordedAt && <div><strong>Time:</strong> {new Date(r.createdAt).toLocaleString()}</div>}
+                      {r.approvedAt && <div><strong>Approved Time:</strong> {formatDateTime(r.approvedAt)}</div>}
+                      {r.recordedAt && <div><strong>Recorded Time:</strong> {formatDateTime(r.recordedAt)}</div>}
+                      {r.createdAt && !r.approvedAt && !r.recordedAt && <div><strong>Time:</strong> {formatDateTime(r.createdAt)}</div>}
                     </div>
                   </div>
                 ))}
@@ -398,7 +401,7 @@ export function AdminCaseDetail() {
                           {formatEventName(event.type)}
                         </h4>
                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <span>{new Date(event.createdAt).toLocaleString()}</span>
+                          <span>{formatDateTime(event.createdAt)}</span>
                           <span>•</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><UserIcon size={12} /> {event.actorRole}</span>
                         </div>
@@ -407,7 +410,7 @@ export function AdminCaseDetail() {
                   ))}
                 </div>
               ) : (
-                <div style={{ color: 'var(--color-text-secondary)' }}>No events recorded.</div>
+                <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />
               )}
             </CardContent>
           </Card>
@@ -415,7 +418,7 @@ export function AdminCaseDetail() {
         </div>
 
         {/* Right Column (Actions) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: '320px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 'min(100%, 320px)' }}>
           
           <Card style={{ border: '2px solid var(--color-primary)' }}>
             <CardHeader title="Admin Actions" icon={<AlertCircle size={18} color="var(--color-primary)" />} />
@@ -585,7 +588,7 @@ export function AdminCaseDetail() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--color-text-secondary)' }}>Completed</span>
-                      <span>{caseData.inspectionDetails?.completedAt ? new Date(caseData.inspectionDetails.completedAt).toLocaleString() : '-'}</span>
+                      <span>{caseData.inspectionDetails?.completedAt ? formatDateTime(caseData.inspectionDetails.completedAt) : '-'}</span>
                     </div>
                     {(inspection?.notes || caseData.inspectionDetails?.notes) && (
                       <div style={{ marginTop: '4px' }}>
@@ -792,7 +795,7 @@ export function AdminCaseDetail() {
                   <CheckCircle size={32} color="var(--color-text-secondary)" style={{ margin: '0 auto var(--space-2)' }} />
                   <div style={{ fontWeight: 'var(--font-weight-medium)' }}>No Action Required</div>
                   <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                    Case is currently in {status.replace(/_/g, ' ')}.
+                    Case is currently in <StatusBadge status={status} />.
                   </div>
                 </div>
               )}

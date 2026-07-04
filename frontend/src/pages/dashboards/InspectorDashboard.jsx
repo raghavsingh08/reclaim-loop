@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardHeader, CardContent } from '../../components/ui/Card';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { formatDate } from '../../utils/formatters';
+import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
-import { useAuth } from '../../contexts/AuthContext';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useNavigate } from 'react-router-dom';
 import { getInspectorDashboard, getMyInspections, getAwaitingReceiptCases, receiveCase } from '../../services/inspector';
 import { Wrench, CheckCircle, ClipboardList, MapPin, Search, ArrowRight, Package, Clock } from 'lucide-react';
 import './InspectorDashboard.css';
 
 export function InspectorDashboard() {
-  const { user } = useAuth();
   const navigate = useNavigate();
+  const { isDesktop } = useResponsiveLayout();
   
   const [stats, setStats] = useState(null);
   const [inspections, setInspections] = useState([]);
@@ -57,7 +59,7 @@ export function InspectorDashboard() {
 
 
   if (loading && !stats) return <LoadingState text="Loading workbench data..." />;
-  if (error) return <EmptyState title="System Error" description={error} />;
+  if (error) return <ErrorState title="System Error" description={error} />;
 
   const pendingQueue = inspections.filter(i => {
     const statusMatch = ['PENDING', 'IN_PROGRESS', 'ASSIGNED'].includes(i.status);
@@ -162,8 +164,9 @@ export function InspectorDashboard() {
             <div style={{ marginBottom: 'var(--space-6)' }}>
               <h2 className="panel-title">Awaiting Facility Receipt</h2>
               <Card style={{ border: '2px solid var(--color-primary)' }}>
-                <div className="table-responsive">
-                  <table className="workbench-table">
+                {isDesktop ? (
+<div className="table-responsive desktop-table-view">
+<table className="workbench-table">
                     <thead>
                       <tr>
                         <th>Case ID</th>
@@ -190,7 +193,7 @@ export function InspectorDashboard() {
                           </td>
                           <td>
                             <span className={`status-chip status-pending`}>
-                              {c.status.replace(/_/g, ' ')}
+                              <StatusBadge status={c.status} />
                             </span>
                           </td>
                           <td style={{ textAlign: 'right' }}>
@@ -207,6 +210,38 @@ export function InspectorDashboard() {
                     </tbody>
                   </table>
                 </div>
+              ) : (
+                <div className="mobile-card-list">
+                  {awaitingCases.map((c) => (
+                    <div key={c._id} className="mobile-list-card">
+                      <div className="mobile-list-card-header">
+                        <span className="mobile-case-code" style={{ fontWeight: 'bold' }}>{c.caseCode}</span>
+                        <span className="mobile-case-date">{formatDate(c.createdAt)}</span>
+                      </div>
+                      <div className="mobile-list-card-body">
+                        <div className="mobile-list-card-row">
+                          <span className="mobile-list-card-label">Product</span>
+                          <span style={{ fontWeight: '500' }}>{c.product?.name}</span>
+                        </div>
+                        <div className="mobile-list-card-row">
+                          <span className="mobile-list-card-label">Type</span>
+                          <span>{c.requestType}</span>
+                        </div>
+                        <div style={{ marginTop: 'var(--space-2)' }}>
+                          <Button 
+                            variant="primary" 
+                            size="sm"
+                            style={{ width: '100%', justifyContent: 'center' }}
+                            onClick={() => handleReceive(c.assignedFacilityId || c.assignedFacility?._id, c._id)}
+                          >
+                            Receive Item
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               </Card>
             </div>
           )}
@@ -214,8 +249,9 @@ export function InspectorDashboard() {
           <h2 className="panel-title">Assigned Inspections</h2>
           {pendingQueue.length > 0 ? (
             <Card>
-              <div className="table-responsive">
-                <table className="workbench-table">
+              {isDesktop ? (
+<div className="table-responsive desktop-table-view">
+<table className="workbench-table">
                   <thead>
                     <tr>
                       <th>Case ID</th>
@@ -260,16 +296,16 @@ export function InspectorDashboard() {
                         </td>
                         <td>
                           <span className={`status-chip status-${inspection.status.toLowerCase()}`}>
-                            {inspection.status.replace(/_/g, ' ')}
+                            <StatusBadge status={inspection.status} />
                             {getCaseObj(inspection)?.status && getCaseObj(inspection).status !== inspection.status && (
                                <span style={{ display: 'block', fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>
-                                 {getCaseObj(inspection).status.replace(/_/g, ' ')}
+                                 <StatusBadge status={getCaseObj(inspection).status} />
                                </span>
                             )}
                           </span>
                         </td>
                         <td className="date-cell">
-                          {new Date(inspection.createdAt).toLocaleDateString()}
+                          {formatDate(inspection.createdAt)}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <Button 
@@ -280,12 +316,40 @@ export function InspectorDashboard() {
                           >
                             Open <ArrowRight size={14} />
                           </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mobile-card-list">
+                  {pendingQueue.map((inspection) => (
+                    <div key={inspection._id} className="mobile-list-card" onClick={() => navigate(`/inspector/inspections/${getCaseId(inspection)}`)}>
+                      <div className="mobile-list-card-header">
+                        <span className="mobile-case-code" style={{ fontWeight: 'bold' }}>{getCaseCode(inspection)}</span>
+                        <span className="mobile-case-date">{formatDate(inspection.assignedDate || inspection.createdAt)}</span>
+                      </div>
+                      <div className="mobile-list-card-body">
+                        <div className="mobile-list-card-row">
+                          <span className="mobile-list-card-label">Product</span>
+                          <span style={{ fontWeight: '500' }}>{getProduct(inspection)?.name || 'Unknown Product'}</span>
+                        </div>
+                        <div className="mobile-list-card-row">
+                          <span className="mobile-list-card-label">Facility</span>
+                          <span>{getFacility(inspection)?.name || '-'}</span>
+                        </div>
+                        <div className="mobile-list-card-row">
+                          <span className="mobile-list-card-label">Status</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--color-bg-secondary)', fontSize: '12px', fontWeight: '500' }}>
+                            <StatusBadge status={inspection.status} />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           ) : (
             <EmptyState 
@@ -349,7 +413,7 @@ export function InspectorDashboard() {
                         {getProduct(inspection)?.name || 'Unknown Product'}
                       </div>
                       <div className="completed-date">
-                        {new Date(inspection.updatedAt || inspection.createdAt).toLocaleDateString()}
+                        {formatDate(inspection.updatedAt || inspection.createdAt)}
                       </div>
                     </div>
                   </CardContent>

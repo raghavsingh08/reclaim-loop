@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, Menu } from 'lucide-react';
+import { Bell, Search, User } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getNotifications } from '../services/notifications';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import './TopNavigation.css';
 
 export function TopNavigation() {
@@ -10,6 +11,7 @@ export function TopNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(0);
+  const { isDesktop } = useResponsiveLayout();
 
   useEffect(() => {
     if (user && !location.pathname.includes('/login')) {
@@ -27,10 +29,11 @@ export function TopNavigation() {
           <Search className="search-icon" size={16} />
           <input 
             type="text" 
-            placeholder="Search orders, customers, or serial numbers..." 
+            placeholder="Search cases..." 
             className="search-input"
+            aria-label="Search"
           />
-          <div className="search-shortcut">/</div>
+          {isDesktop && <div className="search-shortcut">/</div>}
         </div>
       </div>
       

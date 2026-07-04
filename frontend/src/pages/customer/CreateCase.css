@@ -1,0 +1,122 @@
+.create-case-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.product-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.address-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.create-case-section {
+  margin-bottom: var(--space-6);
+}
+
+.single-column-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+.mobile-spaced-flex {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.desktop-request-select {
+  display: block;
+}
+
+.mobile-request-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .create-case-wrapper {
+    padding-bottom: 100px; /* Prevent bottom nav from hiding buttons */
+  }
+
+  .product-details-grid,
+  .address-details-grid,
+  .single-column-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-5); /* Increase vertical spacing on mobile for touch targets */
+  }
+
+  .mobile-spaced-flex {
+    gap: var(--space-5);
+  }
+
+  /* Lightweight sections on mobile: remove heavy borders/shadows from cards */
+  .create-case-section {
+    border: none;
+    box-shadow: none;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    margin-bottom: var(--space-8);
+  }
+
+  /* Make sure select is full width and tappable */
+  select[name="requestType"] {
+    width: 100%;
+    height: 48px; /* Touch target minimum */
+  }
+
+  /* Mobile Request Cards */
+  .desktop-request-select {
+    display: none;
+  }
+
+  .mobile-request-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .request-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-app);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+  }
+
+  .request-card.selected {
+    border-color: var(--color-primary);
+    background-color: rgba(var(--color-primary-rgb, 0, 112, 243), 0.05);
+    box-shadow: 0 0 0 1px var(--color-primary); /* Emphasize selection */
+  }
+
+  .request-card:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .request-card-title {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+  }
+
+  .request-card-desc {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+  }
+}

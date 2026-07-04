@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import './variables.css';
+@import './mobile.css';
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -71,4 +72,32 @@ ul, ol {
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Responsive Utilities */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1px; /* Prevent scrollbar clipping */
+}
+
+/* Stack flex containers on small screens */
+.responsive-flex {
+  display: flex;
+  gap: var(--space-6);
+}
+
+@media (max-width: 1024px) {
+  .responsive-flex {
+    flex-direction: column;
+  }
+}
+
+/* Page content responsive padding */
+@media (max-width: 768px) {
+  .dashboard-content {
+    padding: var(--space-4) !important;
+    padding-bottom: 80px !important; /* Space for bottom nav */
+  }
 }

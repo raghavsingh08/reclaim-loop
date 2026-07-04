@@ -12,7 +12,7 @@ export function DashboardHome() {
         Overview
       </h1>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-6)' }}>
         <Card>
           <CardHeader title="Pending Inspections" subtitle="Awaiting review" />
           <CardContent>

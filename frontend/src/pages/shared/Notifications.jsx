@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { formatDate } from '../../utils/formatters';
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { Bell, Check, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,7 +33,6 @@ export function Notifications() {
       await markNotificationAsRead(id);
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
     } catch (err) {
-      console.error('Failed to mark read', err);
     }
   };
 
@@ -41,7 +41,6 @@ export function Notifications() {
       await markAllNotificationsAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     } catch (err) {
-      console.error('Failed to mark all read', err);
     }
   };
 
@@ -70,7 +69,6 @@ export function Notifications() {
             showToast("Pickup not found for this notification.");
           }
         } catch (err) {
-          console.error(err);
           showToast("Error finding pickup");
         }
       } else if (role === 'INSPECTOR') {
@@ -84,7 +82,7 @@ export function Notifications() {
   };
 
   if (loading) return <LoadingState text="Loading notifications..." />;
-  if (error) return <EmptyState title="Failed to load notifications" description={error} />;
+  if (error) return <ErrorState title="Failed to load notifications" description={error} />;
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -137,7 +135,7 @@ export function Notifications() {
                       {notif.title}
                     </h4>
                     <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-                      {new Date(notif.createdAt).toLocaleDateString()}
+                      {formatDate(notif.createdAt)}
                     </span>
                   </div>
                   <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--space-2)' }}>

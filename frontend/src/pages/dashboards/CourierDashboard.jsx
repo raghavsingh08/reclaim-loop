@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardHeader, CardContent } from '../../components/ui/Card';
+import { formatDateTime, formatTime } from '../../utils/formatters';
+import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { EmptyState, LoadingState } from '../../components/ui/States';
+import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getCourierDashboard, getMyPickups, acceptPickup, collectPickup } from '../../services/courier';
@@ -53,7 +54,7 @@ export function CourierDashboard() {
   };
 
   if (loading && !stats) return <LoadingState text="Loading logistics dashboard..." />;
-  if (error) return <EmptyState title="Error" description={error} />;
+  if (error) return <ErrorState title="Error" description={error} />;
 
   return (
     <div className="courier-dashboard">
@@ -150,7 +151,7 @@ export function CourierDashboard() {
                       <div className="detail-item">
                         <Calendar size={16} />
                         <span>
-                          {new Date(pickup.scheduledWindow?.start).toLocaleString()} - {new Date(pickup.scheduledWindow?.end).toLocaleTimeString()}
+                          {formatDateTime(pickup.scheduledWindow?.start)} - {formatTime(pickup.scheduledWindow?.end)}
                         </span>
                       </div>
                     </div>

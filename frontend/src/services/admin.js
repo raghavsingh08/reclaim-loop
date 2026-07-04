@@ -22,7 +22,6 @@ export const getCaseById = async (caseId) => {
 
 export const getCaseTimeline = async (caseId) => {
   const response = await api.get(`/cases/${caseId}/timeline`);
-  console.log("Admin timeline response", response.data);
   return response.data?.data?.events || response.data?.data?.timeline || response.data?.data || response.data;
 };
 

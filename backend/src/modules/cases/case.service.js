@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import mongoose from 'mongoose';
 import { CASE_STATUSES } from '../../constants/caseStatus.js';
-import { REQUEST_TYPES, REQUEST_TYPE_VALUES } from '../../constants/requestTypes.js';
+import { REQUEST_TYPE_VALUES } from '../../constants/requestTypes.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Decision } from '../../models/Decision.js';
@@ -12,7 +12,6 @@ import { Notification } from '../../models/Notification.js';
 import { Pickup } from '../../models/Pickup.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { assertValidTransition } from './caseStateMachine.js';
 import { createNotification } from '../notifications/notification.service.js';
 
 const createCaseCode = () =>
@@ -26,13 +25,6 @@ const findAccessibleCase = async (caseId, user, session = null) => {
   const recoveryCase = await RecoveryCase.findOne({ _id: caseId, ...accessFilter(user) }).session(session);
   if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
   return recoveryCase;
-};
-
-const branchEntryStatuses = {
-  [REQUEST_TYPES.REFUND]: CASE_STATUSES.REFUND_REVIEW_PENDING,
-  [REQUEST_TYPES.REPAIR]: CASE_STATUSES.REPAIR_SCHEDULED,
-  [REQUEST_TYPES.EXCHANGE]: CASE_STATUSES.REPLACEMENT_RESERVED,
-  [REQUEST_TYPES.RECYCLE]: CASE_STATUSES.RECYCLE_SCHEDULED,
 };
 
 export const createCase = async (input, user) => {
@@ -94,45 +86,6 @@ export const listCases = (user) =>
   RecoveryCase.find(accessFilter(user)).sort({ createdAt: -1 });
 
 export const getCaseById = (caseId, user) => findAccessibleCase(caseId, user);
-
-export const updateCaseStatus = async (caseId, { status, metadata }, user) => {
-  if (!status) throw new ApiError(400, 'Status is required');
-
-  const session = await mongoose.startSession();
-  try {
-    let updatedCase;
-    await session.withTransaction(async () => {
-      const recoveryCase = await findAccessibleCase(caseId, user, session);
-      assertValidTransition(recoveryCase.status, status);
-
-      if (
-        recoveryCase.status === CASE_STATUSES.INSPECTION_COMPLETED &&
-        branchEntryStatuses[recoveryCase.requestType] !== status
-      ) {
-        throw new ApiError(409, `The ${recoveryCase.requestType} workflow must transition to ${branchEntryStatuses[recoveryCase.requestType]}`);
-      }
-
-      const previousStatus = recoveryCase.status;
-      recoveryCase.status = status;
-      recoveryCase.version += 1;
-      updatedCase = await recoveryCase.save({ session });
-
-      await Event.create(
-        [{
-          caseId: recoveryCase._id,
-          type: status,
-          actorId: user._id,
-          actorRole: user.role,
-          metadata: { ...(metadata || {}), previousStatus },
-        }],
-        { session },
-      );
-    });
-    return updatedCase;
-  } finally {
-    await session.endSession();
-  }
-};
 
 export const getCaseTimeline = async (caseId, user) => {
   const recoveryCase = await findAccessibleCase(caseId, user);
