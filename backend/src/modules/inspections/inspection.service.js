@@ -8,6 +8,7 @@ import {
 import { OWNER_TYPES } from '../../constants/ownerTypes.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
+import { CaseTransitionEngine } from '../../domain/caseTransitionEngine.js';
 import { EventPublisher } from '../../domain/eventPublisher.js';
 import { Inspection } from '../../models/Inspection.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
@@ -36,20 +37,26 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
   requireObjectId(inspectorId, 'inspector ID');
 
   let inspection;
-  await CaseEngine.runInTransaction(async (session) => {
+  await CaseTransitionEngine.executeOptimistic({
+    work: async ({ session }) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
+      if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
+
+      // Capture the state token that this admin assignment was based on.
+      const expectedStatus = recoveryCase.status;
+      const expectedVersion = recoveryCase.version;
+
       const inspector = await User.findOne({
         _id: inspectorId,
         role: USER_ROLES.INSPECTOR,
         isActive: true,
       }).session(session);
-      if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (!inspector) throw new ApiError(400, 'Inspector must be an active INSPECTOR user');
       if (
         ![
           CASE_STATUSES.FACILITY_RECEIVED,
           CASE_STATUSES.REINSPECTION_REQUESTED,
-        ].includes(recoveryCase.status)
+        ].includes(expectedStatus)
       ) {
         throw new ApiError(409, 'Case must be facility-received or approved for reinspection');
       }
@@ -63,7 +70,7 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
         throw new ApiError(409, 'Case is not in the custody of its assigned facility');
       }
 
-      const previousStatus = recoveryCase.status;
+      const previousStatus = expectedStatus;
       const latestInspection = await Inspection.findOne({ caseId: recoveryCase._id })
         .sort({ createdAt: -1 })
         .session(session);
@@ -94,20 +101,25 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
         { session },
       );
 
-      recoveryCase.inspectionId = inspection._id;
-      await CaseEngine.transition({
-        session,
-        recoveryCase,
-        toStatus: CASE_STATUSES.INSPECTION_ASSIGNED,
-        actorId: actor._id,
-        actorRole: actor.role,
+      await CaseTransitionEngine.transitionOptimistic({
+        caseId: recoveryCase._id,
+        expectedStatus,
+        expectedVersion,
+        nextStatus: CASE_STATUSES.INSPECTION_ASSIGNED,
+        actor: {
+          id: actor._id,
+          role: actor.role,
+        },
+        casePatch: { inspectionId: inspection._id },
         metadata: {
           inspectionId: inspection._id,
           inspectorId: inspector._id,
           facilityId: inspection.facilityId,
           previousStatus,
         },
+        session,
       });
+    },
   });
 
   await createNotification({

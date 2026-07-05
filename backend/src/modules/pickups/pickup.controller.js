@@ -1,3 +1,4 @@
+import { CommandCoordinator } from '../../domain/commandCoordinator.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import {
@@ -11,8 +12,25 @@ import {
 } from './pickup.service.js';
 
 export const assign = asyncHandler(async (req, res) => {
-  const pickup = await assignPickup(req.body, req.user);
-  res.status(201).json(new ApiResponse(201, { pickup }, 'Pickup assigned'));
+  const result = await CommandCoordinator.execute({
+    key: req.get('Idempotency-Key'),
+    method: req.method,
+    route: '/api/pickups/assign',
+    params: req.params,
+    body: req.body,
+    userId: req.user._id,
+    work: async () => {
+      const pickup = await assignPickup(req.body, req.user);
+      return {
+        status: 201,
+        body: new ApiResponse(201, { pickup }, 'Pickup assigned'),
+      };
+    },
+  });
+
+  res.set('X-Command-ID', result.commandId);
+  if (result.replayed) res.set('Idempotency-Replayed', 'true');
+  res.status(result.status).json(result.body);
 });
 
 export const accept = asyncHandler(async (req, res) => {

@@ -25,6 +25,7 @@ export const errorHandler = (error, _req, res, _next) => {
   }
   res.status(statusCode).json({
     success: false,
+    ...(typeof error.code === 'string' && { code: error.code }),
     message,
     errors: error.errors || [],
     ...(env.nodeEnv === 'development' && { stack: error.stack }),

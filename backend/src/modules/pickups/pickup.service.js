@@ -5,6 +5,7 @@ import { PICKUP_STATUSES } from '../../constants/pickupStatus.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { TRANSFER_TYPES } from '../../constants/transferTypes.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
+import { CaseTransitionEngine } from '../../domain/caseTransitionEngine.js';
 import { EventPublisher } from '../../domain/eventPublisher.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Facility } from '../../models/Facility.js';
@@ -50,8 +51,14 @@ export const assignPickup = async (input, actor) => {
   }
 
   let assignedPickup;
-  await CaseEngine.runInTransaction(async (session) => {
+  await CaseTransitionEngine.executeOptimistic({
+    work: async ({ session }) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
+      if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
+
+      const expectedStatus = recoveryCase.status;
+      const expectedVersion = recoveryCase.version;
+
       const courier = await User.findOne({
         _id: courierId,
         role: USER_ROLES.COURIER,
@@ -61,14 +68,40 @@ export const assignPickup = async (input, actor) => {
         _id: facilityId,
         isActive: true,
       }).session(session);
-      if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
       if (!recoveryCase.pickupAddress) throw new ApiError(400, 'Recovery case is missing a pickup address. Cannot assign courier.');
       if (!courier) throw new ApiError(400, 'Courier must be an active COURIER user');
       if (!facility) throw new ApiError(400, 'Facility must be an active facility');
       if (recoveryCase.pickupId) throw new ApiError(409, 'A pickup is already assigned to this case');
-      
+
+      const pickupId = new mongoose.Types.ObjectId();
+
+      await CaseTransitionEngine.transitionOptimistic({
+        caseId: recoveryCase._id,
+        expectedStatus,
+        expectedVersion,
+        nextStatus: CASE_STATUSES.PICKUP_ASSIGNED,
+        actor: {
+          id: actor._id,
+          role: actor.role,
+        },
+        casePatch: {
+          pickupId,
+          assignedFacilityId: facility._id,
+          currentOwnerType: OWNER_TYPES.CUSTOMER,
+          currentOwnerId: recoveryCase.customerId,
+        },
+        metadata: {
+          pickupId,
+          courierId: courier._id,
+          facilityId: facility._id,
+          previousStatus: CASE_STATUSES.CASE_CREATED,
+        },
+        session,
+      });
+
       [assignedPickup] = await Pickup.create(
         [{
+          _id: pickupId,
           caseId: recoveryCase._id,
           customerId: recoveryCase.customerId,
           courierId: courier._id,
@@ -78,24 +111,7 @@ export const assignPickup = async (input, actor) => {
         }],
         { session },
       );
-
-      recoveryCase.pickupId = assignedPickup._id;
-      recoveryCase.assignedFacilityId = facility._id;
-      recoveryCase.currentOwnerType = OWNER_TYPES.CUSTOMER;
-      recoveryCase.currentOwnerId = recoveryCase.customerId;
-      await CaseEngine.transition({
-        session,
-        recoveryCase,
-        toStatus: CASE_STATUSES.PICKUP_ASSIGNED,
-        actorId: actor._id,
-        actorRole: actor.role,
-        metadata: {
-          pickupId: assignedPickup._id,
-          courierId: courier._id,
-          facilityId: facility._id,
-          previousStatus: CASE_STATUSES.CASE_CREATED,
-        },
-      });
+    },
   });
   await Promise.all([
       createNotification({
