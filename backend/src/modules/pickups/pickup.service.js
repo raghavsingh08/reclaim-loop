@@ -35,7 +35,7 @@ const getPickupCase = async (pickup, session) => {
   return recoveryCase;
 };
 
-export const assignPickup = async (input, actor) => {
+export const assignPickup = async (input, actor, { session, afterCommit } = {}) => {
   const { caseId, courierId, facilityId, scheduledWindow } = input;
   if (!caseId || !courierId || !facilityId || !scheduledWindow?.start || !scheduledWindow?.end) {
     throw new ApiError(400, 'Case ID, courier ID, facility ID, and scheduled window are required');
@@ -51,7 +51,13 @@ export const assignPickup = async (input, actor) => {
   }
 
   let assignedPickup;
+  if (!session || typeof afterCommit !== 'function') {
+    throw new TypeError('Pickup assignment requires a coordinated transaction context');
+  }
+
   await CaseTransitionEngine.executeOptimistic({
+    session,
+    afterCommit,
     work: async ({ session }) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
@@ -113,7 +119,8 @@ export const assignPickup = async (input, actor) => {
       );
     },
   });
-  await Promise.all([
+  afterCommit(async () => {
+    await Promise.all([
       createNotification({
         userId: assignedPickup.courierId,
         caseId: assignedPickup.caseId,
@@ -130,15 +137,16 @@ export const assignPickup = async (input, actor) => {
         message: 'A courier has been assigned to collect your item.',
         metadata: { pickupId: assignedPickup._id },
       }),
-  ]);
-  EventPublisher.publishPickupAssigned({
+    ]);
+  });
+  afterCommit(() => EventPublisher.publishPickupAssigned({
       caseId: assignedPickup.caseId.toString(),
       pickupId: assignedPickup._id.toString(),
       customerId: assignedPickup.customerId.toString(),
       courierId: assignedPickup.courierId.toString(),
       status: assignedPickup.status,
       timestamp: new Date().toISOString(),
-  });
+  }));
   return assignedPickup;
 };
 

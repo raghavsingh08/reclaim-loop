@@ -19,8 +19,12 @@ export const assign = asyncHandler(async (req, res) => {
     params: req.params,
     body: req.body,
     userId: req.user._id,
-    work: async () => {
-      const pickup = await assignPickup(req.body, req.user);
+    work: async ({ session, afterCommit }) => {
+      const pickup = await assignPickup(
+        req.body,
+        req.user,
+        { session, afterCommit },
+      );
       return {
         status: 201,
         body: new ApiResponse(201, { pickup }, 'Pickup assigned'),

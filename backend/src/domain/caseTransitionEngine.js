@@ -88,7 +88,35 @@ const execute = async ({ work }) => {
   }
 };
 
-const executeOptimistic = async ({ work }) => {
+const executeOptimistic = async ({ work, session: providedSession, afterCommit }) => {
+  if (providedSession) {
+    if (!providedSession.inTransaction()) {
+      throw new Error('The provided session must have an active transaction');
+    }
+    if (typeof afterCommit !== 'function') {
+      throw new TypeError('afterCommit is required when using a provided session');
+    }
+
+    // The caller owns the transaction. The engine only contributes lifecycle work
+    // and forwards its post-commit actions to the transaction coordinator.
+    postCommitActions.set(providedSession, []);
+    try {
+      const result = await work({
+        session: providedSession,
+        afterCommit: (action) => registerAfterCommit(providedSession, action),
+      });
+      for (const action of postCommitActions.get(providedSession) || []) {
+        afterCommit(action);
+      }
+      return result;
+    } catch (error) {
+      if (isWriteConflict(error)) throw caseModifiedError();
+      throw error;
+    } finally {
+      postCommitActions.delete(providedSession);
+    }
+  }
+
   const session = await mongoose.startSession();
   try {
     postCommitActions.set(session, []);

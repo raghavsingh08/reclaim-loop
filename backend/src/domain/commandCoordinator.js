@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import mongoose from 'mongoose';
 import { CommandExecution, COMMAND_EXECUTION_STATUSES } from '../models/CommandExecution.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -50,6 +51,18 @@ const validateKey = (key) => {
 };
 
 const cloneForStorage = (value) => JSON.parse(JSON.stringify(value));
+
+const runPostCommitActions = async (actions) => {
+  for (const action of actions) {
+    try {
+      await action();
+    } catch (error) {
+      // Temporary in-memory delivery until a durable Outbox is introduced.
+      // The database command is already committed, so delivery failure is logged only.
+      console.error('Command post-commit action failed:', error);
+    }
+  }
+};
 
 const findExisting = ({ userId, method, route, key }) =>
   CommandExecution.findOne({ userId, method, route, key });
@@ -141,26 +154,56 @@ const execute = async ({ key, method, route, params = {}, body = {}, userId, wor
     });
   }
 
+  const session = await mongoose.startSession();
+  const postCommitActions = [];
   try {
-    const result = await work({ commandId: execution.commandId });
+    session.startTransaction();
+    const result = await work({
+      session,
+      commandId: execution.commandId,
+      afterCommit: (action) => {
+        if (typeof action !== 'function') {
+          throw new TypeError('afterCommit action must be a function');
+        }
+        postCommitActions.push(action);
+      },
+    });
     if (!Number.isInteger(result?.status) || result.status < 200 || result.status >= 400) {
       throw new TypeError('Command work must return a successful HTTP status and body');
     }
 
     const responseBody = cloneForStorage(result.body);
-    execution.status = COMMAND_EXECUTION_STATUSES.COMPLETED;
-    execution.responseStatus = result.status;
-    execution.responseBody = responseBody;
-    execution.lockedUntil = new Date();
-    await execution.save();
+    const completedExecution = await CommandExecution.findOneAndUpdate(
+      {
+        _id: execution._id,
+        status: COMMAND_EXECUTION_STATUSES.IN_PROGRESS,
+        requestHash,
+      },
+      {
+        $set: {
+          status: COMMAND_EXECUTION_STATUSES.COMPLETED,
+          responseStatus: result.status,
+          responseBody,
+          lockedUntil: new Date(),
+        },
+      },
+      { new: true, runValidators: true, session },
+    );
+    if (!completedExecution) {
+      throw new Error('Command execution ownership was lost before completion');
+    }
+
+    await session.commitTransaction();
+    await runPostCommitActions(postCommitActions);
 
     return {
-      commandId: execution.commandId,
+      commandId: completedExecution.commandId,
       status: result.status,
       body: responseBody,
       replayed: false,
     };
   } catch (error) {
+    if (session.inTransaction()) await session.abortTransaction();
     // V1 deliberately stores no failed command result. The same key may execute again.
     await CommandExecution.deleteOne({
       _id: execution._id,
@@ -169,6 +212,8 @@ const execute = async ({ key, method, route, params = {}, body = {}, userId, wor
       console.error('Failed to clean up unsuccessful command execution:', cleanupError);
     });
     throw error;
+  } finally {
+    await session.endSession();
   }
 };
 

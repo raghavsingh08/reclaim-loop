@@ -38,14 +38,15 @@ sequenceDiagram
     HTTP->>CC: execute(command context, work)
     CC->>CC: validate key and hash request
     CC->>CC: create IN_PROGRESS execution
-    CC->>WS: execute pickup assignment
-    WS->>CTE: optimistic lifecycle transition
+    CC->>DB: start shared transaction
+    CC->>WS: execute pickup assignment with session
+    WS->>CTE: optimistic lifecycle transition with session
     CTE->>DB: update case and create Event
     WS->>DB: create Pickup
-    DB-->>CTE: commit
-    CTE->>PC: publish registered Socket.IO action
     WS-->>CC: successful API result
-    CC->>CC: store response and mark COMPLETED
+    CC->>DB: mark CommandExecution COMPLETED
+    DB-->>CC: commit all writes atomically
+    CC->>PC: run registered effects
     CC-->>HTTP: response + commandId
     HTTP-->>Client: original response + X-Command-ID
 ```
@@ -72,7 +73,7 @@ userId + method + route + Idempotency-Key
 
 ### First request
 
-The coordinator creates an `IN_PROGRESS` record, invokes the workflow once, stores the successful response, marks the execution `COMPLETED`, and returns `X-Command-ID`.
+The coordinator creates an `IN_PROGRESS` record, starts a shared MongoDB transaction, and invokes the workflow with `{ session, commandId, afterCommit }`. The workflow, case transition, Event, Pickup, and completed response are committed atomically. The coordinator then runs registered post-commit effects and returns `X-Command-ID`.
 
 ### Duplicate while in progress
 
@@ -109,11 +110,20 @@ The collection has:
 
 V1 supports only `IN_PROGRESS` and `COMPLETED`.
 
-## V1 Reliability Boundary
+## Transaction Boundary
 
-The workflow transaction commits before the coordinator stores the completed HTTP response. A process crash in that narrow interval can leave committed business state with an `IN_PROGRESS` command record. V1 intentionally does not add distributed recovery, automatic retries, or an Outbox. This limitation must be closed in a later phase before treating command replay as an end-to-end delivery guarantee.
+`CommandExecution.IN_PROGRESS` is acquired before the transaction so concurrent requests can observe ownership. The coordinator then owns one MongoDB session and passes it to the workflow. The following writes share that transaction:
 
-`lockedUntil` records the ownership lease but V1 does not automatically steal or retry expired commands.
+- Pickup creation.
+- Optimistic RecoveryCase update and version increment.
+- Lifecycle Event creation.
+- `CommandExecution.COMPLETED`, response status, and response body.
+
+If any transactional operation fails, all business writes and command completion roll back. The V1 failure policy then removes the external `IN_PROGRESS` ownership record, allowing a later retry.
+
+Only after commit does the coordinator run registered callbacks. Callback failures are logged and never change the successful HTTP result. These callbacks are in-memory and therefore provide no delivery guarantee if the process stops after commit. A durable Outbox will close that remaining delivery gap in a later phase.
+
+`lockedUntil` records the ownership lease, but V1 does not automatically steal or retry expired commands.
 
 ## Future Integration
 
@@ -123,7 +133,7 @@ The `commandId` can later be attached to lifecycle Events to correlate the initi
 
 ### Outbox
 
-The eventual design should persist the completed command result and Outbox messages atomically with workflow state. This closes the crash window between transaction commit and asynchronous publication.
+The eventual design should add Outbox messages to the same transaction that already contains workflow state and the completed command result. This will make asynchronous publication durable without coupling it to the lifecycle engine.
 
 ### BullMQ
 
