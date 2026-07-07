@@ -44,40 +44,69 @@ export const createCase = async (input, user) => {
     throw new ApiError(400, `Request type must be one of: ${REQUEST_TYPE_VALUES.join(', ')}`);
   }
 
-  const recoveryCase = await RecoveryCase.create({
-    caseCode: createCaseCode(),
-    customerId: user._id,
-    retailerId: retailerId || null,
-    requestType,
-    product,
-    pickupAddress,
-    reason: reason.trim(),
-    description: description?.trim() || null,
-    currentOwnerId: user._id,
-    evidenceImages: evidenceImages || [],
-  });
-
+  const session = await mongoose.startSession();
+  let recoveryCase;
   try {
-    await Event.create({
-      caseId: recoveryCase._id,
-      type: CASE_STATUSES.CASE_CREATED,
-      actorId: user._id,
-      actorRole: user.role,
-      metadata: { requestType },
+    await session.withTransaction(async () => {
+      [recoveryCase] = await RecoveryCase.create(
+        [{
+          caseCode: createCaseCode(),
+          customerId: user._id,
+          retailerId: retailerId || null,
+          requestType,
+          product,
+          pickupAddress,
+          reason: reason.trim(),
+          description: description?.trim() || null,
+          currentOwnerId: user._id,
+          evidenceImages: evidenceImages || [],
+        }],
+        { session },
+      );
+
+      const occurredAt = new Date();
+      await Event.create(
+        [{
+          caseId: recoveryCase._id,
+          type: CASE_STATUSES.CASE_CREATED,
+          actorId: user._id,
+          actorRole: user.role,
+          schemaVersion: 1,
+          commandSequence: 1,
+          previousStatus: null,
+          nextStatus: CASE_STATUSES.CASE_CREATED,
+          previousVersion: null,
+          nextVersion: recoveryCase.version,
+          occurredAt,
+          recordedAt: new Date(),
+          metadata: {
+            requestType,
+            productName: recoveryCase.product.name,
+            ...(recoveryCase.product.category && {
+              category: recoveryCase.product.category,
+            }),
+          },
+        }],
+        { session },
+      );
     });
-  } catch (error) {
-    await RecoveryCase.findByIdAndDelete(recoveryCase._id);
-    throw error;
+  } finally {
+    await session.endSession();
   }
 
-  await createNotification({
-    userId: user._id,
-    caseId: recoveryCase._id,
-    type: CASE_STATUSES.CASE_CREATED,
-    title: 'Recovery case created',
-    message: 'Recovery case ' + recoveryCase.caseCode + ' was created successfully.',
-    metadata: { caseCode: recoveryCase.caseCode },
-  });
+  try {
+    await createNotification({
+      userId: user._id,
+      caseId: recoveryCase._id,
+      type: CASE_STATUSES.CASE_CREATED,
+      title: 'Recovery case created',
+      message: 'Recovery case ' + recoveryCase.caseCode + ' was created successfully.',
+      metadata: { caseCode: recoveryCase.caseCode },
+    });
+  } catch (error) {
+    // Notification delivery is outside the case transaction and must not fail creation.
+    console.error('Case-created notification failed:', error);
+  }
 
   return recoveryCase;
 };
@@ -109,7 +138,10 @@ export const deleteCaseForTesting = async (caseId) => {
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
 
       deletedCaseId = recoveryCase._id;
-      await Event.deleteMany({ caseId: recoveryCase._id }).session(session);
+      await Event.deleteManyForDevelopment(
+        { caseId: recoveryCase._id },
+        { session },
+      );
       await Pickup.deleteMany({ caseId: recoveryCase._id }).session(session);
       await Inspection.deleteMany({ caseId: recoveryCase._id }).session(session);
       await CustodyRecord.deleteMany({ caseId: recoveryCase._id }).session(session);

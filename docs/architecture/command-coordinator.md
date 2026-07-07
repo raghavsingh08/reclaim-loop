@@ -6,7 +6,10 @@ The `CommandCoordinator` provides request-level idempotency for critical HTTP co
 
 Optimistic locking and idempotency solve different problems. Optimistic locking rejects competing lifecycle updates based on stale case state. Idempotency recognizes repeated delivery of the same client command and replays its original successful response.
 
-V1 is integrated only with `POST /api/pickups/assign`.
+The shared-session coordinator is currently integrated with:
+
+- `POST /api/pickups/assign`
+- `POST /api/inspections/:caseId/assign`
 
 ## Why It Is Outside CaseTransitionEngine
 
@@ -29,20 +32,20 @@ sequenceDiagram
     participant Client
     participant HTTP as HTTP Controller
     participant CC as CommandCoordinator
-    participant WS as Pickup Workflow Service
+    participant WS as Workflow Service
     participant CTE as CaseTransitionEngine
     participant DB as MongoDB Transaction
     participant PC as Post-Commit Actions
 
-    Client->>HTTP: POST /api/pickups/assign + Idempotency-Key
+    Client->>HTTP: Critical command + Idempotency-Key
     HTTP->>CC: execute(command context, work)
     CC->>CC: validate key and hash request
     CC->>CC: create IN_PROGRESS execution
     CC->>DB: start shared transaction
-    CC->>WS: execute pickup assignment with session
+    CC->>WS: execute workflow with session
     WS->>CTE: optimistic lifecycle transition with session
     CTE->>DB: update case and create Event
-    WS->>DB: create Pickup
+    WS->>DB: create workflow document
     WS-->>CC: successful API result
     CC->>DB: mark CommandExecution COMPLETED
     DB-->>CC: commit all writes atomically
@@ -114,7 +117,7 @@ V1 supports only `IN_PROGRESS` and `COMPLETED`.
 
 `CommandExecution.IN_PROGRESS` is acquired before the transaction so concurrent requests can observe ownership. The coordinator then owns one MongoDB session and passes it to the workflow. The following writes share that transaction:
 
-- Pickup creation.
+- Workflow document creation (`Pickup` or `Inspection`).
 - Optimistic RecoveryCase update and version increment.
 - Lifecycle Event creation.
 - `CommandExecution.COMPLETED`, response status, and response body.
@@ -122,6 +125,8 @@ V1 supports only `IN_PROGRESS` and `COMPLETED`.
 If any transactional operation fails, all business writes and command completion roll back. The V1 failure policy then removes the external `IN_PROGRESS` ownership record, allowing a later retry.
 
 Only after commit does the coordinator run registered callbacks. Callback failures are logged and never change the successful HTTP result. These callbacks are in-memory and therefore provide no delivery guarantee if the process stops after commit. A durable Outbox will close that remaining delivery gap in a later phase.
+
+Both Pickup Assignment and Assign Inspector use this same boundary: their workflow document, optimistic case transition, lifecycle Event, and completed replay response share one session and commit atomically.
 
 `lockedUntil` records the ownership lease, but V1 does not automatically steal or retry expired commands.
 

@@ -35,7 +35,11 @@ const getPickupCase = async (pickup, session) => {
   return recoveryCase;
 };
 
-export const assignPickup = async (input, actor, { session, afterCommit } = {}) => {
+export const assignPickup = async (
+  input,
+  actor,
+  { session, commandId, afterCommit } = {},
+) => {
   const { caseId, courierId, facilityId, scheduledWindow } = input;
   if (!caseId || !courierId || !facilityId || !scheduledWindow?.start || !scheduledWindow?.end) {
     throw new ApiError(400, 'Case ID, courier ID, facility ID, and scheduled window are required');
@@ -102,6 +106,7 @@ export const assignPickup = async (input, actor, { session, afterCommit } = {}) 
           facilityId: facility._id,
           previousStatus: CASE_STATUSES.CASE_CREATED,
         },
+        commandId,
         session,
       });
 

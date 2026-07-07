@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { env } from '../../config/env.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { authorize } from '../../middlewares/authorize.middleware.js';
@@ -20,7 +21,9 @@ router.get('/:caseId', getRecoveryCase);
 router.get('/:caseId/timeline', getRecoveryCaseTimeline);
 router.get('/:caseId/custody', getRecoveryCaseCustody);
 
-// Development/testing-only destructive endpoint. ADMIN access is required.
-router.delete('/:caseId', authorize(USER_ROLES.ADMIN), deleteRecoveryCase);
+// Development/testing-only destructive endpoint. It is not registered in production.
+if (env.nodeEnv !== 'production') {
+  router.delete('/:caseId', authorize(USER_ROLES.ADMIN), deleteRecoveryCase);
+}
 
 export default router;

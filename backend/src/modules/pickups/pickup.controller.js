@@ -19,11 +19,11 @@ export const assign = asyncHandler(async (req, res) => {
     params: req.params,
     body: req.body,
     userId: req.user._id,
-    work: async ({ session, afterCommit }) => {
+    work: async ({ session, commandId, afterCommit }) => {
       const pickup = await assignPickup(
         req.body,
         req.user,
-        { session, afterCommit },
+        { session, commandId, afterCommit },
       );
       return {
         status: 201,

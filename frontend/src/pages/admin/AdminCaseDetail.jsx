@@ -17,24 +17,10 @@ import {
   Info,
   ClipboardList
 } from 'lucide-react';
-import { 
-  getCaseById, 
-  getCaseTimeline, 
-  getCaseDecisions, 
-  getCaseRefunds,
-  startReview,
-  makeDecision,
-  approveRefund,
-  recordRefund,
-  assignPickup,
-  getFacilities,
-  receiveAtFacility,
-  getInspectors,
-  assignInspector,
-  deleteCase,
-  getCaseInspection
-} from '../../services/admin';
+import { getCaseById, getCaseTimeline, getCaseDecisions, getCaseRefunds, getFacilities, startReview, makeDecision, approveRefund, recordRefund, assignPickup, getInspectors, assignInspector, getCaseInspection, receiveAtFacility } from '../../services/admin';
+import { generateIdempotencyKey } from '../../utils/idempotency';
 import './AdminCaseDetail.css';
+import { useCaseRealtime } from '../../hooks/useCaseRealtime';
 
 function formatEventName(type) {
   if (!type) return 'Unknown';
@@ -75,14 +61,20 @@ export function AdminCaseDetail() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [cData, tData, dData, rData, fData, iData, inspData] = await Promise.all([
-        getCaseById(caseId),
+      
+      const cData = await getCaseById(caseId);
+      const skipInspection = [
+        'CASE_CREATED', 'PICKUP_ASSIGNED', 'PICKUP_ACCEPTED', 
+        'ITEM_COLLECTED', 'DELIVERED_TO_FACILITY', 'FACILITY_RECEIVED'
+      ].includes(cData.status);
+
+      const [tData, dData, rData, fData, iData, inspData] = await Promise.all([
         getCaseTimeline(caseId),
         getCaseDecisions(caseId),
         getCaseRefunds(caseId),
         getFacilities().catch(() => []), // non-blocking fallback
         getInspectors().catch(() => []),
-        getCaseInspection(caseId).catch(() => null)
+        skipInspection ? Promise.resolve(null) : getCaseInspection(caseId).catch(() => null)
       ]);
       setCaseData(cData);
       const parsedTimeline = tData?.events || (Array.isArray(tData) ? tData : []);
@@ -103,6 +95,8 @@ export function AdminCaseDetail() {
     loadData();
   }, [loadData]);
 
+  useCaseRealtime(caseId, loadData);
+
   const handleAction = async (actionFn, payload = null) => {
     setActionError(null);
     setSuccessMessage(null);
@@ -116,7 +110,14 @@ export function AdminCaseDetail() {
       setSuccessMessage('Action completed successfully.');
       await loadData();
     } catch (err) {
-      setActionError(err.message || 'Action failed');
+      const code = err.response?.data?.code;
+      if (code === 'IDEMPOTENCY_IN_PROGRESS') {
+        setActionError('This action is currently in progress. Please wait.');
+      } else if (code === 'IDEMPOTENCY_KEY_REUSED') {
+        setActionError('This action has already been completed.');
+      } else {
+        setActionError(err.response?.data?.message || err.message || 'Action failed');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -133,7 +134,8 @@ export function AdminCaseDetail() {
         end: assignPickupForm.end
       }
     };
-    handleAction(assignPickup, payload);
+    const key = generateIdempotencyKey();
+    handleAction(() => assignPickup(payload, key));
   };
 
   const handleStartReview = () => handleAction(startReview);
@@ -162,20 +164,8 @@ export function AdminCaseDetail() {
   const handleAssignInspector = (e) => {
     e.preventDefault();
     if (!assignInspectorId) return;
-    handleAction(() => assignInspector(caseId, assignInspectorId));
-  };
-
-  const handleDeleteCase = async () => {
-    if (!window.confirm("Are you sure you want to permanently delete this case? This action cannot be undone.")) return;
-    try {
-      setActionLoading(true);
-      await deleteCase(caseId);
-      alert("Case deleted successfully");
-      navigate('/admin/cases');
-    } catch (err) {
-      setActionError(err.message || 'Failed to delete case');
-      setActionLoading(false);
-    }
+    const key = generateIdempotencyKey();
+    handleAction(() => assignInspector(caseId, assignInspectorId, key));
   };
 
 
@@ -800,22 +790,6 @@ export function AdminCaseDetail() {
                 </div>
               )}
 
-            </CardContent>
-          </Card>
-
-          <Card style={{ border: '1px solid var(--color-danger)' }}>
-            <CardHeader title="Danger Zone" icon={<AlertCircle size={18} color="var(--color-danger)" />} style={{ color: 'var(--color-danger)' }} />
-            <CardContent>
-              <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-                Permanently delete this case and all associated data. This action cannot be undone.
-              </p>
-              <Button 
-                onClick={handleDeleteCase} 
-                disabled={actionLoading} 
-                style={{ width: '100%', backgroundColor: 'var(--color-danger)', color: 'white', border: 'none' }}
-              >
-                {actionLoading ? 'Processing...' : 'Delete Case'}
-              </Button>
             </CardContent>
           </Card>
 

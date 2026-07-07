@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 import { env } from '../config/env.js';
 import { USER_ROLES } from '../constants/roles.js';
 import { EventPublisher } from '../domain/eventPublisher.js';
+import { Inspection } from '../models/Inspection.js';
+import { Pickup } from '../models/Pickup.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
 import { User } from '../models/User.js';
 
@@ -17,9 +19,20 @@ const getHandshakeToken = (socket) => {
 
 const canAccessCase = async (caseId, user) => {
   if (!mongoose.isValidObjectId(caseId)) return false;
-  const filter = { _id: caseId };
-  if (user.role === USER_ROLES.CUSTOMER) filter.customerId = user._id;
-  return Boolean(await RecoveryCase.exists(filter));
+
+  if (user.role === USER_ROLES.ADMIN) {
+    return Boolean(await RecoveryCase.exists({ _id: caseId }));
+  }
+  if (user.role === USER_ROLES.CUSTOMER) {
+    return Boolean(await RecoveryCase.exists({ _id: caseId, customerId: user._id }));
+  }
+  if (user.role === USER_ROLES.COURIER) {
+    return Boolean(await Pickup.exists({ caseId, courierId: user._id }));
+  }
+  if (user.role === USER_ROLES.INSPECTOR) {
+    return Boolean(await Inspection.exists({ caseId, inspectorId: user._id }));
+  }
+  return false;
 };
 
 export const initializeSocket = (httpServer) => {
@@ -68,8 +81,15 @@ export const initializeSocket = (httpServer) => {
 
     socket.on('leave-case', (input, acknowledge) => {
       const caseId = typeof input === 'string' ? input : input?.caseId;
-      if (mongoose.isValidObjectId(caseId)) socket.leave(`case:${caseId}`);
-      if (typeof acknowledge === 'function') acknowledge({ success: true, caseId });
+      const validCaseId = mongoose.isValidObjectId(caseId);
+      if (validCaseId) socket.leave(`case:${caseId}`);
+      if (typeof acknowledge === 'function') {
+        acknowledge(
+          validCaseId
+            ? { success: true, caseId }
+            : { success: false, message: 'Invalid case ID' },
+        );
+      }
     });
   });
 

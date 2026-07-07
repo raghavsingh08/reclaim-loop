@@ -32,12 +32,22 @@ const assertAssignedInspector = (inspection, actor) => {
   }
 };
 
-export const assignInspection = async (caseId, { inspectorId }, actor) => {
+export const assignInspection = async (
+  caseId,
+  { inspectorId },
+  actor,
+  { session, commandId, afterCommit } = {},
+) => {
   requireObjectId(caseId, 'case ID');
   requireObjectId(inspectorId, 'inspector ID');
+  if (!session || typeof afterCommit !== 'function') {
+    throw new TypeError('Inspection assignment requires a coordinated transaction context');
+  }
 
   let inspection;
   await CaseTransitionEngine.executeOptimistic({
+    session,
+    afterCommit,
     work: async ({ session }) => {
       const recoveryCase = await RecoveryCase.findById(caseId).session(session);
       if (!recoveryCase) throw new ApiError(404, 'Recovery case not found');
@@ -117,12 +127,13 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
           facilityId: inspection.facilityId,
           previousStatus,
         },
+        commandId,
         session,
       });
     },
   });
 
-  await createNotification({
+  afterCommit(() => createNotification({
       userId: inspection.inspectorId,
       caseId: inspection.caseId,
       type: CASE_STATUSES.INSPECTION_ASSIGNED,
@@ -132,7 +143,7 @@ export const assignInspection = async (caseId, { inspectorId }, actor) => {
         inspectionId: inspection._id,
         facilityId: inspection.facilityId,
       },
-  });
+  }));
   return inspection;
 };
 

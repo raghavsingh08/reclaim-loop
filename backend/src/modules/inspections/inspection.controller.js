@@ -1,3 +1,4 @@
+import { CommandCoordinator } from '../../domain/commandCoordinator.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import {
@@ -9,8 +10,30 @@ import {
 } from './inspection.service.js';
 
 export const assign = asyncHandler(async (req, res) => {
-  const inspection = await assignInspection(req.params.caseId, req.body, req.user);
-  res.status(201).json(new ApiResponse(201, { inspection }, 'Inspection assigned'));
+  const result = await CommandCoordinator.execute({
+    key: req.get('Idempotency-Key'),
+    method: req.method,
+    route: '/api/inspections/:caseId/assign',
+    params: req.params,
+    body: req.body,
+    userId: req.user._id,
+    work: async ({ session, commandId, afterCommit }) => {
+      const inspection = await assignInspection(
+        req.params.caseId,
+        req.body,
+        req.user,
+        { session, commandId, afterCommit },
+      );
+      return {
+        status: 201,
+        body: new ApiResponse(201, { inspection }, 'Inspection assigned'),
+      };
+    },
+  });
+
+  res.set('X-Command-ID', result.commandId);
+  if (result.replayed) res.set('Idempotency-Replayed', 'true');
+  res.status(result.status).json(result.body);
 });
 
 export const start = asyncHandler(async (req, res) => {

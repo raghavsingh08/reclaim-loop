@@ -60,6 +60,7 @@ const registerCaseSocketEvent = ({
 }) => {
   registerAfterCommit(session, () => EventPublisher.publishCaseUpdated({
     caseId: recoveryCase._id.toString(),
+    customerId: recoveryCase.customerId?.toString(),
     status,
     actorId: actor.id.toString(),
     actorRole: actor.role,
@@ -166,13 +167,24 @@ const transition = async ({
   actorId,
   actorRole,
   metadata = {},
+  commandId,
+  commandSequence = 1,
 }) => {
   assertActiveExecution(session);
   assertValidTransition(recoveryCase.status, toStatus);
 
+  const occurredAt = new Date();
+  const previousStatus = recoveryCase.status;
+  const previousVersion = Number.isInteger(recoveryCase.version)
+    ? recoveryCase.version
+    : undefined;
   recoveryCase.status = toStatus;
   recoveryCase.version += 1;
   await recoveryCase.save({ session });
+
+  const nextVersion = Number.isInteger(recoveryCase.version)
+    ? recoveryCase.version
+    : undefined;
 
   await Event.create(
     [{
@@ -180,6 +192,15 @@ const transition = async ({
       type: toStatus,
       actorId,
       actorRole,
+      schemaVersion: 1,
+      ...(commandId && { commandId }),
+      commandSequence,
+      previousStatus,
+      nextStatus: toStatus,
+      ...(previousVersion !== undefined && { previousVersion }),
+      ...(nextVersion !== undefined && { nextVersion }),
+      occurredAt,
+      recordedAt: new Date(),
       metadata,
     }],
     { session },
@@ -203,6 +224,8 @@ const transitionOptimistic = async ({
   actor,
   casePatch = {},
   metadata = {},
+  commandId,
+  commandSequence = 1,
   session,
 }) => {
   assertActiveExecution(session);
@@ -215,6 +238,7 @@ const transitionOptimistic = async ({
   }
   validateCasePatch(casePatch);
   assertValidTransition(expectedStatus, nextStatus);
+  const occurredAt = new Date();
 
   const updatedCase = await RecoveryCase.findOneAndUpdate(
     {
@@ -237,6 +261,15 @@ const transitionOptimistic = async ({
       type: nextStatus,
       actorId: actor.id,
       actorRole: actor.role,
+      schemaVersion: 1,
+      ...(commandId && { commandId }),
+      commandSequence,
+      previousStatus: expectedStatus,
+      nextStatus,
+      previousVersion: expectedVersion,
+      nextVersion: expectedVersion + 1,
+      occurredAt,
+      recordedAt: new Date(),
       metadata,
     }],
     { session },

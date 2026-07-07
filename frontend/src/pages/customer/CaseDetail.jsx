@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getCaseById, getCaseTimeline } from '../../services/customer';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ArrowLeft, Clock, Info, User as UserIcon } from 'lucide-react';
+import { useCaseRealtime } from '../../hooks/useCaseRealtime';
 
 // Format technical event names (e.g. PICKUP_ASSIGNED -> Pickup Assigned)
 function formatEventName(type) {
@@ -25,18 +26,28 @@ export function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
+  const loadData = useCallback((showLoading = false) => {
+    if (showLoading) setLoading(true);
+    return Promise.all([
       getCaseById(caseId),
-      getCaseTimeline(caseId)
+      getCaseTimeline(caseId),
     ])
       .then(([caseData, timelineData]) => {
         setData(caseData?.case || caseData?.recoveryCase || caseData);
         setTimeline(timelineData?.events || timelineData || []);
+        setError(null);
       })
       .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showLoading) setLoading(false);
+      });
   }, [caseId]);
+
+  useEffect(() => {
+    loadData(true);
+  }, [loadData]);
+
+  useCaseRealtime(caseId, loadData);
 
   if (loading) return <LoadingState text="Loading case details..." />;
   if (error || !data) return <ErrorState title="Case not found" description={error || "Could not load the requested case."} action={<Button onClick={() => navigate('/customer/cases')}>Back to Cases</Button>} />;

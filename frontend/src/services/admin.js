@@ -55,8 +55,9 @@ export const recordRefund = async (caseId, data) => {
   return response.data?.data || response.data;
 };
 
-export const assignPickup = async (data) => {
-  const response = await api.post('/pickups/assign', data);
+export const assignPickup = async (data, idempotencyKey) => {
+  const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {};
+  const response = await api.post('/pickups/assign', data, config);
   return response.data?.data || response.data;
 };
 
@@ -70,13 +71,9 @@ export const getInspectors = async () => {
   return response.data?.data?.users || response.data?.data || response.data || [];
 };
 
-export const assignInspector = async (caseId, inspectorId) => {
-  const response = await api.post(`/inspections/${caseId}/assign`, { inspectorId });
-  return response.data?.data || response.data;
-};
-
-export const deleteCase = async (caseId) => {
-  const response = await api.delete(`/cases/${caseId}`);
+export const assignInspector = async (caseId, inspectorId, idempotencyKey) => {
+  const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {};
+  const response = await api.post(`/inspections/${caseId}/assign`, { inspectorId }, config);
   return response.data?.data || response.data;
 };
 
