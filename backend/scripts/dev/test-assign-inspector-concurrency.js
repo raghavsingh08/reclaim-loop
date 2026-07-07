@@ -1,77 +1,53 @@
-import axios from 'axios';
+import axios from "axios";
 
-/*
- * Temporary local concurrency check for Assign Inspector.
- *
- * Before running:
- * 1. Start the backend and ensure CASE_ID is in FACILITY_RECEIVED or
- *    REINSPECTION_REQUESTED status.
- * 2. Paste a valid ADMIN JWT and two active INSPECTOR user IDs below, or set
- *    the matching environment variables.
- * 3. From /backend run:
- *      node scripts/dev/test-assign-inspector-concurrency.js
- *
- * Use a fresh eligible case for every run because the successful request moves
- * the case to INSPECTION_ASSIGNED.
- */
+const API_BASE_URL = "http://localhost:5000/api";
+const ADMIN_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiQURNSU4iLCJpYXQiOjE3ODM0MDcyNjEsImV4cCI6MTc4MzQ5MzY2MSwic3ViIjoiNmE0NTc2OGY3NjQ4NGMyMzU5MmMwMjRiIn0.x_rN5TGKyUdGh5kzl5mGRLWpduesq3zYlAQrfrmGi6k";
+const CASE_ID = "6a4ca6c2cff028e71f2d5d07";
+const COURIER_ID = "6a45760e76484c23592c0248";
+const FACILITY_ID = "6a46088aa642e63ffbe53cf2";
 
-const API_BASE_URL = 'http://localhost:5000/api';
-const ADMIN_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiQURNSU4iLCJpYXQiOjE3ODMyMzQ1NjAsImV4cCI6MTc4MzMyMDk2MCwic3ViIjoiNmE0NTc2OGY3NjQ4NGMyMzU5MmMwMjRiIn0.TJvDTfFxOmLSSnhK_fmJbPTFg2Zy0lHj8WSQyQwIzKg';
-const CASE_ID ='6a4a0311a37459e7306b5d20';
-const INSPECTOR_A_ID = '6a4683477959d7edb781a657';
-const INSPECTOR_B_ID = '6a49ff78621c0a859125553b';
+const body = {
+  caseId: CASE_ID,
+  courierId: COURIER_ID,
+  facilityId: FACILITY_ID,
+  scheduledWindow: {
+    start: "2026-07-08T10:00:00.000Z",
+    end: "2026-07-08T12:00:00.000Z",
+  },
+};
 
-const placeholders = [ADMIN_JWT, CASE_ID, INSPECTOR_A_ID, INSPECTOR_B_ID];
-if (placeholders.some((value) => value.startsWith('PASTE_'))) {
-  console.error('Configure ADMIN_JWT, CASE_ID, INSPECTOR_A_ID, and INSPECTOR_B_ID before running.');
-  process.exitCode = 1;
-} else {
-  const url = `${API_BASE_URL}/inspections/${CASE_ID}/assign`;
-  const config = {
-    headers: { Authorization: `Bearer ${ADMIN_JWT}` },
-  };
+const configA = {
+  headers: {
+    Authorization: `Bearer ${ADMIN_JWT}`,
+    "Content-Type": "application/json",
+    "Idempotency-Key": "pickup-different-key-20260707-a1",
+  },
+};
 
-  const results = await Promise.allSettled([
-    axios.post(url, { inspectorId: INSPECTOR_A_ID }, config),
-    axios.post(url, { inspectorId: INSPECTOR_B_ID }, config),
-  ]);
+const configB = {
+  headers: {
+    Authorization: `Bearer ${ADMIN_JWT}`,
+    "Content-Type": "application/json",
+    "Idempotency-Key": "pickup-different-key-20260707-b1",
+  },
+};
 
-  const summarize = (result, label) => {
-    const response = result.status === 'fulfilled'
-      ? result.value
-      : result.reason?.response;
-    const status = response?.status ?? 'NO_RESPONSE';
-    const message = response?.data?.message ?? result.reason?.message ?? 'No message';
-
-    console.log(`${label}: status=${status}, message=${message}`);
-    return {
-      succeeded: typeof status === 'number' && status >= 200 && status < 300,
-      conflict: status === 409,
-    };
-  };
-
-    function formatResult(label, result) {
-    if (result.status === "fulfilled") {
-      return {
-        label,
-        ok: true,
-        status: result.value.status,
-        data: result.value.data,
-      };
-    }
-
-    const error = result.reason;
-
-    return {
+function show(label, result) {
+  if (result.status === "fulfilled") {
+    console.log(label, result.value.status, result.value.data);
+  } else {
+    console.log(
       label,
-      ok: false,
-      code: error.code,
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-    };
+      result.reason.response?.status,
+      result.reason.response?.data || result.reason.message
+    );
   }
-
-  console.dir(formatResult("Request A", results[0]), { depth: null });
-  console.dir(formatResult("Request B", results[1]), { depth: null });
 }
+
+const results = await Promise.allSettled([
+  axios.post(`${API_BASE_URL}/pickups/assign`, body, configA),
+  axios.post(`${API_BASE_URL}/pickups/assign`, body, configB),
+]);
+
+show("Request A:", results[0]);
+show("Request B:", results[1]);
