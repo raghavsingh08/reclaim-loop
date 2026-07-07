@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { formatDate } from '../../utils/formatters';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { getInspectorDashboard, getMyInspections, getAwaitingReceiptCases, receiveCase } from '../../services/inspector';
 import { Wrench, CheckCircle, ClipboardList, MapPin, Search, ArrowRight, Package, Clock } from 'lucide-react';
 import './InspectorDashboard.css';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
 
 export function InspectorDashboard() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export function InspectorDashboard() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [dashboardData, myInspectionsData, awaiting] = await Promise.all([
         getInspectorDashboard(),
@@ -31,16 +32,19 @@ export function InspectorDashboard() {
       setStats(dashboardData);
       setInspections(myInspectionsData);
       setAwaitingCases(awaiting);
+      setError(null);
     } catch (err) {
       setError(err.message || 'Failed to load inspector data');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useDashboardRealtime(loadData);
 
   const handleReceive = async (facilityId, caseId) => {
     if (!facilityId) {

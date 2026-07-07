@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { OWNER_TYPES } from '../constants/ownerTypes.js';
 import { Event } from '../models/Event.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
 import { assertValidTransition } from '../modules/cases/caseStateMachine.js';
@@ -61,7 +62,12 @@ const registerCaseSocketEvent = ({
   registerAfterCommit(session, () => EventPublisher.publishCaseUpdated({
     caseId: recoveryCase._id.toString(),
     customerId: recoveryCase.customerId?.toString(),
+    ...(recoveryCase.currentOwnerType === OWNER_TYPES.COURIER &&
+      recoveryCase.currentOwnerId && {
+        courierId: recoveryCase.currentOwnerId.toString(),
+      }),
     status,
+    version: recoveryCase.version,
     actorId: actor.id.toString(),
     actorRole: actor.role,
     timestamp: new Date().toISOString(),
@@ -226,6 +232,7 @@ const transitionOptimistic = async ({
   metadata = {},
   commandId,
   commandSequence = 1,
+  publishCaseUpdated = true,
   session,
 }) => {
   assertActiveExecution(session);
@@ -275,13 +282,15 @@ const transitionOptimistic = async ({
     { session },
   );
 
-  registerCaseSocketEvent({
-    session,
-    recoveryCase: updatedCase,
-    status: nextStatus,
-    actor,
-    metadata,
-  });
+  if (publishCaseUpdated) {
+    registerCaseSocketEvent({
+      session,
+      recoveryCase: updatedCase,
+      status: nextStatus,
+      actor,
+      metadata,
+    });
+  }
   return updatedCase;
 };
 

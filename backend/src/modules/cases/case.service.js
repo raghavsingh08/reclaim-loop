@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { CASE_STATUSES } from '../../constants/caseStatus.js';
 import { REQUEST_TYPE_VALUES } from '../../constants/requestTypes.js';
 import { USER_ROLES } from '../../constants/roles.js';
+import { EventPublisher } from '../../domain/eventPublisher.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Decision } from '../../models/Decision.js';
 import { Event } from '../../models/Event.js';
@@ -93,6 +94,17 @@ export const createCase = async (input, user) => {
   } finally {
     await session.endSession();
   }
+
+  EventPublisher.publishCaseUpdated({
+    caseId: recoveryCase._id.toString(),
+    customerId: recoveryCase.customerId.toString(),
+    status: recoveryCase.status,
+    version: recoveryCase.version,
+    actorId: user._id.toString(),
+    actorRole: user.role,
+    timestamp: new Date().toISOString(),
+    metadata: { requestType },
+  });
 
   try {
     await createNotification({

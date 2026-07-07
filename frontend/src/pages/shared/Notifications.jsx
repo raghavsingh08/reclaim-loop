@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate } from '../../utils/formatters';
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -8,6 +8,7 @@ import { Bell, Check, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getMyPickups } from '../../services/courier';
+import { useNotificationsRealtime } from '../../hooks/useNotificationsRealtime';
 
 export function Notifications() {
   const [notifications, setNotifications] = useState([]);
@@ -16,22 +17,30 @@ export function Notifications() {
   const [toastMessage, setToastMessage] = useState(null);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const fetchNotifications = () => {
-    getNotifications()
-      .then(data => setNotifications(data.notifications || data || []))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  };
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const data = await getNotifications();
+      setNotifications(data.notifications || data || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
+
+  useNotificationsRealtime(fetchNotifications);
 
   const handleMarkAsRead = async (e, id) => {
     e.stopPropagation(); // prevent navigation if clicked
     try {
       await markNotificationAsRead(id);
-      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      await fetchNotifications();
+      window.dispatchEvent(new Event('notifications:refresh'));
     } catch (err) {
     }
   };
@@ -39,7 +48,8 @@ export function Notifications() {
   const handleMarkAllRead = async () => {
     try {
       await markAllNotificationsAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      await fetchNotifications();
+      window.dispatchEvent(new Event('notifications:refresh'));
     } catch (err) {
     }
   };
@@ -51,7 +61,9 @@ export function Notifications() {
 
   const handleNotificationClick = async (notification) => {
     if (!notification.isRead) {
-      markNotificationAsRead(notification._id).catch(console.error);
+      markNotificationAsRead(notification._id).then(() => {
+        window.dispatchEvent(new Event('notifications:refresh'));
+      }).catch(console.error);
     }
     if (notification.caseId && user?.role) {
       const role = user.role.toUpperCase();

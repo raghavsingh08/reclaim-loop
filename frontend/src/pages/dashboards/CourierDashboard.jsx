@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDateTime, formatTime } from '../../utils/formatters';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { getCourierDashboard, getMyPickups, acceptPickup, collectPickup } from '../../services/courier';
 import { Truck, MapPin, Calendar, Clock, CheckCircle } from 'lucide-react';
 import './CourierDashboard.css';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
 
 export function CourierDashboard() {
   const { user } = useAuth();
@@ -18,7 +19,7 @@ export function CourierDashboard() {
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null); // stores pickupId being acted upon
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [dashboardData, myPickupsData] = await Promise.all([
         getCourierDashboard(),
@@ -26,16 +27,19 @@ export function CourierDashboard() {
       ]);
       setStats(dashboardData);
       setPickups(myPickupsData);
+      setError(null);
     } catch (err) {
       setError(err.message || 'Failed to load courier data');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useDashboardRealtime(loadData);
 
   const handleAction = async (pickupId, actionType) => {
     setActionLoading(pickupId);

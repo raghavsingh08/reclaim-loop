@@ -46,6 +46,10 @@ export const EventPublisher = Object.freeze({
     emitToRooms('inspection:started', payload, caseRooms(payload));
   },
 
+  publishInspectionAssigned(payload) {
+    emitToRooms('inspection:assigned', payload, caseRooms(payload));
+  },
+
   publishInspectionCompleted(payload) {
     emitToRooms('inspection:completed', payload, caseRooms(payload));
   },
@@ -70,7 +74,7 @@ export const EventPublisher = Object.freeze({
     emitToRooms(
       'notification:new',
       payload,
-      [payload.userId && `user:${payload.userId}`],
+      [payload.recipientId && `user:${payload.recipientId}`],
       false,
     );
   },

@@ -144,6 +144,14 @@ export const assignInspection = async (
         facilityId: inspection.facilityId,
       },
   }));
+  afterCommit(() => EventPublisher.publishInspectionAssigned({
+    caseId: inspection.caseId.toString(),
+    inspectionId: inspection._id.toString(),
+    inspectorId: inspection.inspectorId.toString(),
+    facilityId: inspection.facilityId.toString(),
+    status: inspection.status,
+    timestamp: new Date().toISOString(),
+  }));
   return inspection;
 };
 
@@ -254,6 +262,15 @@ export const completeInspection = async (
       });
   });
 
+  EventPublisher.publishInspectionCompleted({
+      caseId: inspection.caseId.toString(),
+      inspectionId: inspection._id.toString(),
+      inspectorId: inspection.inspectorId.toString(),
+      facilityId: inspection.facilityId.toString(),
+      condition: inspection.condition,
+      recommendedOutcome: inspection.recommendedOutcome,
+      timestamp: new Date().toISOString(),
+  });
   await Promise.all([
       createNotification({
         userId: customerId,
@@ -271,15 +288,6 @@ export const completeInspection = async (
         metadata: { inspectionId: inspection._id, recommendedOutcome },
       }),
   ]);
-  EventPublisher.publishInspectionCompleted({
-      caseId: inspection.caseId.toString(),
-      inspectionId: inspection._id.toString(),
-      inspectorId: inspection.inspectorId.toString(),
-      facilityId: inspection.facilityId.toString(),
-      condition: inspection.condition,
-      recommendedOutcome: inspection.recommendedOutcome,
-      timestamp: new Date().toISOString(),
-  });
   return inspection;
 };
 

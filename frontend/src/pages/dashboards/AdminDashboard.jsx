@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { getAdminDashboard, listAllCases, getFacilities } from '../../services/admin';
@@ -9,6 +9,7 @@ import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Package, Activity, CheckCircle, Clock, DollarSign, AlertCircle, Building, Bell, Info, ArrowRight, User as UserIcon, Check } from 'lucide-react';
 import './AdminDashboard.css';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
 
 function formatEventName(type) {
   if (!type) return 'Unknown Event';
@@ -27,22 +28,31 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
+  const loadData = useCallback(async () => {
+    try {
+      const [dashboardData, casesData, facilitiesData, notificationsData] = await Promise.all([
       getAdminDashboard(),
       listAllCases(),
       getFacilities(),
-      getNotifications()
-    ])
-      .then(([dashboardData, casesData, facilitiesData, notificationsData]) => {
-        setData(dashboardData);
-        setAllCases(casesData?.cases || casesData || []);
-        setFacilities(facilitiesData?.facilities || facilitiesData || []);
-        setNotifications(notificationsData?.notifications || notificationsData || []);
-      })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      getNotifications(),
+      ]);
+      setData(dashboardData);
+      setAllCases(casesData?.cases || casesData || []);
+      setFacilities(facilitiesData?.facilities || facilitiesData || []);
+      setNotifications(notificationsData?.notifications || notificationsData || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useDashboardRealtime(loadData);
 
   const handleMarkAsRead = async (id) => {
     try {

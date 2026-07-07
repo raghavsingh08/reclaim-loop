@@ -22,17 +22,20 @@ export const createNotification = async ({
     metadata,
   });
 
-  EventPublisher.publishNotificationNew({
-    id: notification._id.toString(),
-    userId: notification.userId.toString(),
-    caseId: notification.caseId.toString(),
-    type: notification.type,
-    title: notification.title,
-    message: notification.message,
-    isRead: notification.isRead,
-    metadata: notification.metadata,
-    createdAt: notification.createdAt,
-  });
+  try {
+    EventPublisher.publishNotificationNew({
+      notificationId: notification._id.toString(),
+      recipientId: notification.userId.toString(),
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      relatedCaseId: notification.caseId?.toString(),
+      createdAt: notification.createdAt,
+    });
+  } catch (error) {
+    // Notification persistence already succeeded; real-time delivery is best effort.
+    console.error('Notification socket emission failed:', error);
+  }
 
   return notification;
 };

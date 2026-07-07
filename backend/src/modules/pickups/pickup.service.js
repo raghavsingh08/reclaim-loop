@@ -7,6 +7,7 @@ import { TRANSFER_TYPES } from '../../constants/transferTypes.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
 import { CaseTransitionEngine } from '../../domain/caseTransitionEngine.js';
 import { EventPublisher } from '../../domain/eventPublisher.js';
+import { Outbox } from '../../domain/outbox.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Facility } from '../../models/Facility.js';
 import { Pickup } from '../../models/Pickup.js';
@@ -85,7 +86,7 @@ export const assignPickup = async (
 
       const pickupId = new mongoose.Types.ObjectId();
 
-      await CaseTransitionEngine.transitionOptimistic({
+      const updatedCase = await CaseTransitionEngine.transitionOptimistic({
         caseId: recoveryCase._id,
         expectedStatus,
         expectedVersion,
@@ -107,7 +108,25 @@ export const assignPickup = async (
           previousStatus: CASE_STATUSES.CASE_CREATED,
         },
         commandId,
+        // Pickup Assignment delivers case:updated durably through the Outbox.
+        // Other workflows retain the legacy post-commit callback by default.
+        publishCaseUpdated: false,
         session,
+      });
+
+      await Outbox.enqueue({
+        session,
+        type: 'CASE_UPDATED',
+        aggregateType: 'RecoveryCase',
+        aggregateId: updatedCase._id,
+        commandId,
+        deduplicationKey: `${commandId}:CASE_UPDATED`,
+        payload: {
+          caseId: updatedCase._id.toString(),
+          customerId: updatedCase.customerId.toString(),
+          version: updatedCase.version,
+          status: updatedCase.status,
+        },
       });
 
       [assignedPickup] = await Pickup.create(
@@ -178,14 +197,6 @@ export const acceptPickup = async (pickupId, courier) => {
         },
       });
   });
-  await createNotification({
-      userId: acceptedPickup.customerId,
-      caseId: acceptedPickup.caseId,
-      type: CASE_STATUSES.PICKUP_ACCEPTED,
-      title: 'Courier accepted pickup',
-      message: 'The assigned courier accepted your pickup.',
-      metadata: { pickupId: acceptedPickup._id },
-  });
   EventPublisher.publishPickupAccepted({
       caseId: acceptedPickup.caseId.toString(),
       pickupId: acceptedPickup._id.toString(),
@@ -193,6 +204,14 @@ export const acceptPickup = async (pickupId, courier) => {
       courierId: acceptedPickup.courierId.toString(),
       status: acceptedPickup.status,
       timestamp: new Date().toISOString(),
+  });
+  await createNotification({
+      userId: acceptedPickup.customerId,
+      caseId: acceptedPickup.caseId,
+      type: CASE_STATUSES.PICKUP_ACCEPTED,
+      title: 'Courier accepted pickup',
+      message: 'The assigned courier accepted your pickup.',
+      metadata: { pickupId: acceptedPickup._id },
   });
   return acceptedPickup;
 };
@@ -237,6 +256,14 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         { session },
       );
   });
+  EventPublisher.publishPickupCollected({
+      caseId: collectedPickup.caseId.toString(),
+      pickupId: collectedPickup._id.toString(),
+      customerId: collectedPickup.customerId.toString(),
+      courierId: collectedPickup.courierId.toString(),
+      status: collectedPickup.status,
+      timestamp: new Date().toISOString(),
+  });
   await Promise.all([
       createNotification({
         userId: collectedPickup.customerId,
@@ -254,14 +281,6 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         metadata: { pickupId: collectedPickup._id },
       }),
   ]);
-  EventPublisher.publishPickupCollected({
-      caseId: collectedPickup.caseId.toString(),
-      pickupId: collectedPickup._id.toString(),
-      customerId: collectedPickup.customerId.toString(),
-      courierId: collectedPickup.courierId.toString(),
-      status: collectedPickup.status,
-      timestamp: new Date().toISOString(),
-  });
   return collectedPickup;
 };
 

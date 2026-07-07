@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { useNavigate } from 'react-router-dom';
 import { getCustomerDashboard } from '../../services/customer';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Package, Activity, CheckCircle, ArrowRight } from 'lucide-react';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
 
 export function CustomerDashboard() {
   const [data, setData] = useState(null);
@@ -15,12 +16,23 @@ export function CustomerDashboard() {
   const navigate = useNavigate();
   const { isDesktop } = useResponsiveLayout();
 
-  useEffect(() => {
-    getCustomerDashboard()
-      .then(setData)
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    try {
+      const dashboardData = await getCustomerDashboard();
+      setData(dashboardData);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useDashboardRealtime(loadData);
 
   if (loading) return <LoadingState text="Loading your dashboard..." />;
   if (error) return <ErrorState title="Failed to load" description={error} />;
