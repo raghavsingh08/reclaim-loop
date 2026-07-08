@@ -38,10 +38,6 @@ export const EventPublisher = Object.freeze({
     emitToRooms('pickup:accepted', payload, caseRooms(payload));
   },
 
-  publishPickupCollected(payload) {
-    emitToRooms('pickup:collected', payload, caseRooms(payload));
-  },
-
   publishInspectionStarted(payload) {
     emitToRooms('inspection:started', payload, caseRooms(payload));
   },
@@ -52,22 +48,6 @@ export const EventPublisher = Object.freeze({
 
   publishInspectionCompleted(payload) {
     emitToRooms('inspection:completed', payload, caseRooms(payload));
-  },
-
-  publishDecisionPending(payload) {
-    emitToRooms('decision:pending', payload, caseRooms(payload));
-  },
-
-  publishDecisionCompleted(payload) {
-    emitToRooms('decision:completed', payload, caseRooms(payload));
-  },
-
-  publishRefundApproved(payload) {
-    emitToRooms('refund:approved', payload, caseRooms(payload));
-  },
-
-  publishRefundRecorded(payload) {
-    emitToRooms('refund:recorded', payload, caseRooms(payload));
   },
 
   publishNotificationNew(payload) {

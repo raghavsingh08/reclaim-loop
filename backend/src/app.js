@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { errorHandler, notFound } from './middlewares/error.middleware.js';
+import { requestLogger } from './middlewares/requestLogger.middleware.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import caseRoutes from './modules/cases/case.routes.js';
 import decisionRoutes from './modules/decisions/decision.routes.js';
@@ -14,6 +15,7 @@ import userRoutes from './modules/users/user.routes.js';
 import { ApiResponse } from './utils/ApiResponse.js';
 
 export const app = express();
+app.use(requestLogger);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

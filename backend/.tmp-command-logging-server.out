@@ -1,0 +1,4 @@
+◇ injected env (4) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+{"level":30,"time":"2026-07-08T06:08:23.349Z","service":"reclaimloop-backend","environment":"development","pid":50360,"mongoHost":"ac-jsvtcoz-shard-00-00.tfdb56x.mongodb.net","msg":"MongoDB connected"}
+{"level":30,"time":"2026-07-08T06:08:23.359Z","service":"reclaimloop-backend","environment":"development","pid":50360,"port":5099,"msg":"ReclaimLoop API listening"}
+{"level":30,"time":"2026-07-08T06:08:23.359Z","service":"reclaimloop-backend","environment":"development","pid":50360,"component":"outbox-worker","workerId":"omen:50360:2edb16cd-6156-4f95-80a8-b6d2df900daa","msg":"Outbox worker started"}

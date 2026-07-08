@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { CASE_STATUSES } from '../../constants/caseStatus.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
-import { EventPublisher } from '../../domain/eventPublisher.js';
 import { Event } from '../../models/Event.js';
 import { LedgerEntry } from '../../models/LedgerEntry.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
@@ -34,22 +33,16 @@ export const approveRefund = async (caseId, { amount, reason }, actor) => {
         actorRole: actor.role,
         metadata: { amount, reason: reason.trim() },
       });
-  });
-  await createNotification({
-      userId: updatedCase.customerId,
-      caseId: updatedCase._id,
-      type: CASE_STATUSES.REFUND_APPROVED,
-      title: 'Refund approved',
-      message: 'Your refund request was approved.',
-      metadata: { amount, reason: reason.trim() },
-  });
-  EventPublisher.publishRefundApproved({
-      caseId: updatedCase._id.toString(),
-      amount,
-      reason: reason.trim(),
-      actorId: actor._id.toString(),
-      actorRole: actor.role,
-      timestamp: new Date().toISOString(),
+
+      await createNotification({
+        userId: updatedCase.customerId,
+        caseId: updatedCase._id,
+        type: CASE_STATUSES.REFUND_APPROVED,
+        title: 'Refund approved',
+        message: 'Your refund request was approved.',
+        metadata: { amount, reason: reason.trim() },
+        session,
+      });
   });
   return updatedCase;
 };
@@ -119,27 +112,20 @@ export const recordRefund = async (
         actorRole: actor.role,
         metadata: { ledgerEntryId: ledgerEntry._id },
       });
-  });
-  await createNotification({
-      userId: updatedCase.customerId,
-      caseId: updatedCase._id,
-      type: CASE_STATUSES.REFUND_RECORDED,
-      title: 'Refund recorded and case completed',
-      message: 'Your refund obligation was recorded and the recovery case was completed.',
-      metadata: {
-        ledgerEntryId: ledgerEntry._id,
-        amount: ledgerEntry.amount,
-        currency: ledgerEntry.currency,
-      },
-  });
-  EventPublisher.publishRefundRecorded({
-      caseId: updatedCase._id.toString(),
-      ledgerEntryId: ledgerEntry._id.toString(),
-      amount: ledgerEntry.amount,
-      currency: ledgerEntry.currency,
-      actorId: actor._id.toString(),
-      actorRole: actor.role,
-      timestamp: new Date().toISOString(),
+
+      await createNotification({
+        userId: updatedCase.customerId,
+        caseId: updatedCase._id,
+        type: CASE_STATUSES.REFUND_RECORDED,
+        title: 'Refund recorded and case completed',
+        message: 'Your refund obligation was recorded and the recovery case was completed.',
+        metadata: {
+          ledgerEntryId: ledgerEntry._id,
+          amount: ledgerEntry.amount,
+          currency: ledgerEntry.currency,
+        },
+        session,
+      });
   });
   return { case: updatedCase, ledgerEntry };
 };

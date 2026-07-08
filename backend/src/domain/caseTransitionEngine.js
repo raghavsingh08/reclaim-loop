@@ -1,10 +1,10 @@
 import mongoose from 'mongoose';
-import { OWNER_TYPES } from '../constants/ownerTypes.js';
+import { logger as rootLogger } from '../config/logger.js';
 import { Event } from '../models/Event.js';
 import { RecoveryCase } from '../models/RecoveryCase.js';
 import { assertValidTransition } from '../modules/cases/caseStateMachine.js';
 import { ApiError } from '../utils/ApiError.js';
-import { EventPublisher } from './eventPublisher.js';
+import { Outbox } from './outbox.js';
 
 const postCommitActions = new WeakMap();
 const PROTECTED_CASE_PATCH_FIELDS = new Set([
@@ -50,29 +50,6 @@ const runPostCommitActions = async (session) => {
       console.error('Post-commit action failed:', error);
     }
   }
-};
-
-const registerCaseSocketEvent = ({
-  session,
-  recoveryCase,
-  status,
-  actor,
-  metadata,
-}) => {
-  registerAfterCommit(session, () => EventPublisher.publishCaseUpdated({
-    caseId: recoveryCase._id.toString(),
-    customerId: recoveryCase.customerId?.toString(),
-    ...(recoveryCase.currentOwnerType === OWNER_TYPES.COURIER &&
-      recoveryCase.currentOwnerId && {
-        courierId: recoveryCase.currentOwnerId.toString(),
-      }),
-    status,
-    version: recoveryCase.version,
-    actorId: actor.id.toString(),
-    actorRole: actor.role,
-    timestamp: new Date().toISOString(),
-    metadata,
-  }));
 };
 
 const execute = async ({ work }) => {
@@ -192,7 +169,7 @@ const transition = async ({
     ? recoveryCase.version
     : undefined;
 
-  await Event.create(
+  const [event] = await Event.create(
     [{
       caseId: recoveryCase._id,
       type: toStatus,
@@ -212,12 +189,27 @@ const transition = async ({
     { session },
   );
 
-  registerCaseSocketEvent({
+  await Outbox.enqueue({
     session,
-    recoveryCase,
-    status: toStatus,
-    actor: { id: actorId, role: actorRole },
-    metadata,
+    type: 'CASE_UPDATED',
+    aggregateType: 'RecoveryCase',
+    aggregateId: recoveryCase._id,
+    commandId,
+    deduplicationKey: `${event._id}:CASE_UPDATED`,
+    payload: {
+      caseId: recoveryCase._id.toString(),
+      customerId: recoveryCase.customerId?.toString(),
+      ...(recoveryCase.currentOwnerType === OWNER_TYPES.COURIER &&
+        recoveryCase.currentOwnerId && {
+          courierId: recoveryCase.currentOwnerId.toString(),
+        }),
+      status: toStatus,
+      version: recoveryCase.version,
+      actorId: actorId.toString(),
+      actorRole,
+      timestamp: occurredAt.toISOString(),
+      metadata,
+    },
   });
   return recoveryCase;
 };
@@ -232,11 +224,17 @@ const transitionOptimistic = async ({
   metadata = {},
   commandId,
   commandSequence = 1,
-  publishCaseUpdated = true,
+  logger,
   session,
 }) => {
   assertActiveExecution(session);
   if (!caseId) throw new TypeError('caseId is required');
+  const transitionLogger = (
+    typeof logger?.child === 'function' ? logger : rootLogger
+  ).child({
+    component: 'case-transition-engine',
+    recoveryCaseId: caseId.toString(),
+  });
   if (!actor?.id || !actor?.role) {
     throw new TypeError('actor must contain id and role');
   }
@@ -244,7 +242,35 @@ const transitionOptimistic = async ({
     throw new TypeError('expectedVersion must be a non-negative integer');
   }
   validateCasePatch(casePatch);
-  assertValidTransition(expectedStatus, nextStatus);
+  const expectedTransitionFields = {
+    expectedStatus,
+    nextStatus,
+    expectedVersion,
+    nextVersion: expectedVersion + 1,
+    actorRole: actor.role,
+    transactionState: 'active',
+  };
+  transitionLogger.debug(
+    { ...expectedTransitionFields, outcome: 'attempt' },
+    'RecoveryCase transition attempted',
+  );
+  try {
+    assertValidTransition(expectedStatus, nextStatus);
+  } catch (error) {
+    transitionLogger.warn(
+      {
+        outcome: 'invalid_transition',
+        expectedStatus,
+        nextStatus,
+        expectedVersion,
+        nextVersion: expectedVersion + 1,
+        actorRole: actor.role,
+        transactionState: 'active',
+      },
+      'RecoveryCase transition rejected by state machine',
+    );
+    throw error;
+  }
   const occurredAt = new Date();
 
   const updatedCase = await RecoveryCase.findOneAndUpdate(
@@ -260,7 +286,34 @@ const transitionOptimistic = async ({
     { new: true, runValidators: true, session },
   );
 
-  if (!updatedCase) throw caseModifiedError();
+  if (!updatedCase) {
+    transitionLogger.warn(
+      {
+        outcome: 'optimistic_conflict',
+        expectedStatus,
+        expectedVersion,
+        nextStatus,
+        nextVersion: expectedVersion + 1,
+        actorRole: actor.role,
+        transactionState: 'active',
+      },
+      'RecoveryCase optimistic transition conflict',
+    );
+    throw caseModifiedError();
+  }
+
+  const stagedTransitionFields = {
+    previousStatus: expectedStatus,
+    nextStatus,
+    previousVersion: expectedVersion,
+    nextVersion: expectedVersion + 1,
+    actorRole: actor.role,
+    transactionState: 'active',
+  };
+  transitionLogger.debug(
+    { ...stagedTransitionFields, outcome: 'case_write_staged' },
+    'RecoveryCase transition write staged',
+  );
 
   await Event.create(
     [{
@@ -282,15 +335,16 @@ const transitionOptimistic = async ({
     { session },
   );
 
-  if (publishCaseUpdated) {
-    registerCaseSocketEvent({
-      session,
-      recoveryCase: updatedCase,
-      status: nextStatus,
-      actor,
-      metadata,
-    });
-  }
+  transitionLogger.debug(
+    {
+      outcome: 'event_write_staged',
+      eventType: nextStatus,
+      commandSequence,
+      transactionState: 'active',
+    },
+    'Lifecycle Event write staged',
+  );
+
   return updatedCase;
 };
 

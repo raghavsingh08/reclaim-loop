@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { CASE_STATUSES } from '../../constants/caseStatus.js';
 import { REQUEST_TYPE_VALUES } from '../../constants/requestTypes.js';
 import { USER_ROLES } from '../../constants/roles.js';
-import { EventPublisher } from '../../domain/eventPublisher.js';
+import { Outbox } from '../../domain/outbox.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Decision } from '../../models/Decision.js';
 import { Event } from '../../models/Event.js';
@@ -66,7 +66,7 @@ export const createCase = async (input, user) => {
       );
 
       const occurredAt = new Date();
-      await Event.create(
+      const [event] = await Event.create(
         [{
           caseId: recoveryCase._id,
           type: CASE_STATUSES.CASE_CREATED,
@@ -90,34 +90,38 @@ export const createCase = async (input, user) => {
         }],
         { session },
       );
+
+      await Outbox.enqueue({
+        session,
+        type: 'CASE_UPDATED',
+        aggregateType: 'RecoveryCase',
+        aggregateId: recoveryCase._id,
+        commandId: undefined,
+        deduplicationKey: `${event._id}:CASE_UPDATED`,
+        payload: {
+          caseId: recoveryCase._id.toString(),
+          customerId: recoveryCase.customerId.toString(),
+          status: recoveryCase.status,
+          version: recoveryCase.version,
+          actorId: user._id.toString(),
+          actorRole: user.role,
+          timestamp: occurredAt.toISOString(),
+          metadata: { requestType },
+        },
+      });
+
+      await createNotification({
+        userId: user._id,
+        caseId: recoveryCase._id,
+        type: CASE_STATUSES.CASE_CREATED,
+        title: 'Recovery case created',
+        message: 'Recovery case ' + recoveryCase.caseCode + ' was created successfully.',
+        metadata: { caseCode: recoveryCase.caseCode },
+        session,
+      });
     });
   } finally {
     await session.endSession();
-  }
-
-  EventPublisher.publishCaseUpdated({
-    caseId: recoveryCase._id.toString(),
-    customerId: recoveryCase.customerId.toString(),
-    status: recoveryCase.status,
-    version: recoveryCase.version,
-    actorId: user._id.toString(),
-    actorRole: user.role,
-    timestamp: new Date().toISOString(),
-    metadata: { requestType },
-  });
-
-  try {
-    await createNotification({
-      userId: user._id,
-      caseId: recoveryCase._id,
-      type: CASE_STATUSES.CASE_CREATED,
-      title: 'Recovery case created',
-      message: 'Recovery case ' + recoveryCase.caseCode + ' was created successfully.',
-      metadata: { caseCode: recoveryCase.caseCode },
-    });
-  } catch (error) {
-    // Notification delivery is outside the case transaction and must not fail creation.
-    console.error('Case-created notification failed:', error);
   }
 
   return recoveryCase;

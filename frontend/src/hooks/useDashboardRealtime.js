@@ -9,7 +9,6 @@ const DASHBOARD_EVENTS = Object.freeze({
     'case:updated',
     'pickup:assigned',
     'pickup:accepted',
-    'pickup:collected',
   ],
   INSPECTOR: [
     'inspection:assigned',

@@ -120,14 +120,16 @@ export const receiveCaseAtFacility = async (facilityId, caseId, { proof } = {}, 
         }],
         { session },
       );
-  });
-  await createNotification({
-      userId: updatedCase.customerId,
-      caseId: updatedCase._id,
-      type: CASE_STATUSES.FACILITY_RECEIVED,
-      title: 'Item received at facility',
-      message: 'Your item was received at the assigned recovery facility.',
-      metadata: { facilityId },
+
+      await createNotification({
+        userId: updatedCase.customerId,
+        caseId: updatedCase._id,
+        type: CASE_STATUSES.FACILITY_RECEIVED,
+        title: 'Item received at facility',
+        message: 'Your item was received at the assigned recovery facility.',
+        metadata: { facilityId },
+        session,
+      });
   });
   return updatedCase;
 };

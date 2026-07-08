@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
+import { logger as rootLogger } from '../config/logger.js';
 import { CommandExecution, COMMAND_EXECUTION_STATUSES } from '../models/CommandExecution.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -52,16 +53,37 @@ const validateKey = (key) => {
 
 const cloneForStorage = (value) => JSON.parse(JSON.stringify(value));
 
-const runPostCommitActions = async (actions) => {
-  for (const action of actions) {
+const runPostCommitActions = async (actions, log) => {
+  for (let actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
+    const action = actions[actionIndex];
     try {
       await action();
     } catch (error) {
       // Temporary in-memory delivery until a durable Outbox is introduced.
       // The database command is already committed, so delivery failure is logged only.
-      console.error('Command post-commit action failed:', error);
+      log.error(
+        { err: error, actionIndex },
+        'Command post-commit action failed',
+      );
     }
   }
+};
+
+const stringifyId = (value) => value?.toString?.() || value;
+
+const createCommandLogger = ({ context, route, userId, commandId }) => {
+  const baseLogger = typeof context?.logger?.child === 'function'
+    ? context.logger
+    : rootLogger;
+  return baseLogger.child({
+    component: 'command-coordinator',
+    ...(context?.requestId && { requestId: context.requestId }),
+    ...(commandId && { commandId }),
+    ...(context?.workflow && { workflow: context.workflow }),
+    route: context?.route || route,
+    userId: stringifyId(context?.userId || userId),
+    ...(context?.role && { role: context.role }),
+  });
 };
 
 const findExisting = ({ userId, method, route, key }) =>
@@ -73,10 +95,16 @@ const resolveDuplicate = async ({
   route,
   key,
   requestHash,
+  log,
+  startedAt,
 }) => {
   const existing = await findExisting({ userId, method, route, key });
   if (!existing) {
     // A unique-index race may become visible just after the losing insert fails.
+    log.warn(
+      { outcome: 'in_progress', durationMs: Date.now() - startedAt },
+      'Duplicate command is still in progress',
+    );
     throw new ApiError(
       409,
       'A request with this idempotency key is already being processed.',
@@ -84,7 +112,12 @@ const resolveDuplicate = async ({
       'IDEMPOTENCY_IN_PROGRESS',
     );
   }
+  const duplicateLog = log.child({ commandId: existing.commandId });
   if (existing.requestHash !== requestHash) {
+    duplicateLog.warn(
+      { outcome: 'request_hash_mismatch', durationMs: Date.now() - startedAt },
+      'Idempotency key reused for a different request',
+    );
     throw new ApiError(
       422,
       'This idempotency key was already used with a different request.',
@@ -93,6 +126,14 @@ const resolveDuplicate = async ({
     );
   }
   if (existing.status === COMMAND_EXECUTION_STATUSES.COMPLETED) {
+    duplicateLog.info(
+      {
+        outcome: 'replayed',
+        responseStatus: existing.responseStatus,
+        durationMs: Date.now() - startedAt,
+      },
+      'Completed command replayed',
+    );
     return {
       commandId: existing.commandId,
       status: existing.responseStatus,
@@ -100,6 +141,10 @@ const resolveDuplicate = async ({
       replayed: true,
     };
   }
+  duplicateLog.warn(
+    { outcome: 'in_progress', durationMs: Date.now() - startedAt },
+    'Duplicate command is still in progress',
+  );
   throw new ApiError(
     409,
     'A request with this idempotency key is already being processed.',
@@ -108,7 +153,18 @@ const resolveDuplicate = async ({
   );
 };
 
-const execute = async ({ key, method, route, params = {}, body = {}, userId, work }) => {
+const execute = async ({
+  key,
+  method,
+  route,
+  params = {},
+  body = {},
+  userId,
+  work,
+  context = {},
+}) => {
+  const startedAt = Date.now();
+  const contextLog = createCommandLogger({ context, route, userId });
   validateKey(key);
   if (!method || !route || !userId || typeof work !== 'function') {
     throw new TypeError('method, route, userId, and work are required');
@@ -151,16 +207,31 @@ const execute = async ({ key, method, route, params = {}, body = {}, userId, wor
       route,
       key,
       requestHash,
+      log: contextLog,
+      startedAt,
     });
   }
+
+  const commandLog = createCommandLogger({
+    context,
+    route,
+    userId,
+    commandId: execution.commandId,
+  });
+  commandLog.debug(
+    { outcome: 'acquired', idempotencyKeyPresent: Boolean(key) },
+    'Command acquired',
+  );
 
   const session = await mongoose.startSession();
   const postCommitActions = [];
   try {
     session.startTransaction();
+    commandLog.debug('Command transaction started');
     const result = await work({
       session,
       commandId: execution.commandId,
+      logger: commandLog,
       afterCommit: (action) => {
         if (typeof action !== 'function') {
           throw new TypeError('afterCommit action must be a function');
@@ -194,7 +265,15 @@ const execute = async ({ key, method, route, params = {}, body = {}, userId, wor
     }
 
     await session.commitTransaction();
-    await runPostCommitActions(postCommitActions);
+    commandLog.info(
+      {
+        outcome: 'committed',
+        responseStatus: result.status,
+        durationMs: Date.now() - startedAt,
+      },
+      'Command committed',
+    );
+    await runPostCommitActions(postCommitActions, commandLog);
 
     return {
       commandId: completedExecution.commandId,
@@ -204,12 +283,33 @@ const execute = async ({ key, method, route, params = {}, body = {}, userId, wor
     };
   } catch (error) {
     if (session.inTransaction()) await session.abortTransaction();
+    const rollbackFields = {
+      outcome: 'rolled_back',
+      durationMs: Date.now() - startedAt,
+      ...(error?.code && { errorCode: error.code }),
+      ...(error?.statusCode && { statusCode: error.statusCode }),
+    };
+    if (error?.isOperational || (error?.statusCode && error.statusCode < 500)) {
+      commandLog.warn(rollbackFields, 'Command rolled back');
+    } else {
+      commandLog.warn(
+        {
+          ...rollbackFields,
+          outcome: 'unexpected_rollback',
+          errorType: error?.name || 'Error',
+        },
+        'Command rolled back unexpectedly',
+      );
+    }
     // V1 deliberately stores no failed command result. The same key may execute again.
     await CommandExecution.deleteOne({
       _id: execution._id,
       status: COMMAND_EXECUTION_STATUSES.IN_PROGRESS,
     }).catch((cleanupError) => {
-      console.error('Failed to clean up unsuccessful command execution:', cleanupError);
+      commandLog.error(
+        { err: cleanupError },
+        'Failed to clean up unsuccessful command execution',
+      );
     });
     throw error;
   } finally {

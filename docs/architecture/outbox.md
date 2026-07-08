@@ -42,7 +42,7 @@ The unique `deduplicationKey` prevents the same logical delivery intent from bei
 
 The API process runs a small embedded worker. It atomically leases eligible messages, dispatches them after their originating transaction has committed, and marks them completed. Failed deliveries return to `PENDING` with exponential backoff, while expired `PROCESSING` leases can be recovered after a process interruption.
 
-Only `CASE_UPDATED` is currently dispatched, through `EventPublisher`. Pickup Assignment is the only producer migrated to the Outbox. Other workflows retain their existing post-commit callbacks, and notification delivery is not yet migrated.
+Only `CASE_UPDATED` is currently dispatched, through `EventPublisher`. Pickup Assignment and Assign Inspector are the migrated producers. Other workflows retain their existing post-commit callbacks, and notification delivery is not yet migrated.
 
 ## Planned migration
 

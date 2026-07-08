@@ -19,11 +19,19 @@ export const assign = asyncHandler(async (req, res) => {
     params: req.params,
     body: req.body,
     userId: req.user._id,
-    work: async ({ session, commandId, afterCommit }) => {
+    context: {
+      logger: req.log,
+      requestId: req.id,
+      userId: req.user?._id,
+      role: req.user?.role,
+      workflow: 'pickup.assign',
+      route: '/api/pickups/assign',
+    },
+    work: async ({ session, commandId, afterCommit, logger }) => {
       const pickup = await assignPickup(
         req.body,
         req.user,
-        { session, commandId, afterCommit },
+        { session, commandId, afterCommit, logger },
       );
       return {
         status: 201,

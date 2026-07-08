@@ -1,3 +1,4 @@
+import { logger as rootLogger } from '../config/logger.js';
 import { OutboxMessage } from '../models/OutboxMessage.js';
 
 const requireNonEmptyString = (value, field) => {
@@ -15,6 +16,7 @@ const enqueue = async ({
   commandId,
   deduplicationKey,
   payload,
+  logger,
 }) => {
   if (!session || typeof session.inTransaction !== 'function' || !session.inTransaction()) {
     throw new TypeError('Outbox.enqueue requires an active MongoDB transaction session');
@@ -37,6 +39,10 @@ const enqueue = async ({
   }
   if (payload === undefined) throw new TypeError('payload is required');
 
+  const outboxLogger = (
+    typeof logger?.child === 'function' ? logger : rootLogger
+  ).child({ component: 'outbox' });
+
   const [message] = await OutboxMessage.create(
     [{
       type: normalizedType,
@@ -47,6 +53,21 @@ const enqueue = async ({
       payload,
     }],
     { session },
+  );
+
+  outboxLogger.debug(
+    {
+      outcome: 'outbox_message_staged',
+      outboxMessageId: message._id.toString(),
+      type: message.type,
+      aggregateType: message.aggregateType,
+      aggregateId: message.aggregateId,
+      ...(message.commandId && { commandId: message.commandId }),
+      status: message.status,
+      transactionState: 'active',
+      dedupeKeyPresent: Boolean(deduplicationKey),
+    },
+    'Outbox message staged',
   );
 
   return message;

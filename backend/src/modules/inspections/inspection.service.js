@@ -9,7 +9,7 @@ import { OWNER_TYPES } from '../../constants/ownerTypes.js';
 import { USER_ROLES } from '../../constants/roles.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
 import { CaseTransitionEngine } from '../../domain/caseTransitionEngine.js';
-import { EventPublisher } from '../../domain/eventPublisher.js';
+import { Outbox } from '../../domain/outbox.js';
 import { Inspection } from '../../models/Inspection.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
 import { User } from '../../models/User.js';
@@ -36,7 +36,7 @@ export const assignInspection = async (
   caseId,
   { inspectorId },
   actor,
-  { session, commandId, afterCommit } = {},
+  { session, commandId, afterCommit, logger } = {},
 ) => {
   requireObjectId(caseId, 'case ID');
   requireObjectId(inspectorId, 'inspector ID');
@@ -111,7 +111,7 @@ export const assignInspection = async (
         { session },
       );
 
-      await CaseTransitionEngine.transitionOptimistic({
+      const updatedCase = await CaseTransitionEngine.transitionOptimistic({
         caseId: recoveryCase._id,
         expectedStatus,
         expectedVersion,
@@ -128,30 +128,60 @@ export const assignInspection = async (
           previousStatus,
         },
         commandId,
+        logger,
         session,
+      });
+
+      await Outbox.enqueue({
+        session,
+        type: 'CASE_UPDATED',
+        aggregateType: 'RecoveryCase',
+        aggregateId: updatedCase._id,
+        commandId,
+        deduplicationKey: `${commandId}:CASE_UPDATED`,
+        payload: {
+          caseId: updatedCase._id.toString(),
+          customerId: updatedCase.customerId.toString(),
+          version: updatedCase.version,
+          status: updatedCase.status,
+        },
+        logger,
+      });
+
+      await Outbox.enqueue({
+        session,
+        type: 'INSPECTION_ASSIGNED',
+        aggregateType: 'Inspection',
+        aggregateId: inspection._id,
+        commandId,
+        deduplicationKey: `${commandId}:INSPECTION_ASSIGNED:${inspection._id}`,
+        payload: {
+          caseId: inspection.caseId.toString(),
+          inspectionId: inspection._id.toString(),
+          inspectorId: inspection.inspectorId.toString(),
+          facilityId: inspection.facilityId.toString(),
+          status: inspection.status,
+          timestamp: inspection.assignedAt.toISOString(),
+        },
+        logger,
+      });
+
+      await createNotification({
+        userId: inspection.inspectorId,
+        caseId: inspection.caseId,
+        type: CASE_STATUSES.INSPECTION_ASSIGNED,
+        title: 'Inspection assigned',
+        message: 'A recovery case inspection has been assigned to you.',
+        metadata: {
+          inspectionId: inspection._id,
+          facilityId: inspection.facilityId,
+        },
+        session,
+        commandId,
+        logger,
       });
     },
   });
-
-  afterCommit(() => createNotification({
-      userId: inspection.inspectorId,
-      caseId: inspection.caseId,
-      type: CASE_STATUSES.INSPECTION_ASSIGNED,
-      title: 'Inspection assigned',
-      message: 'A recovery case inspection has been assigned to you.',
-      metadata: {
-        inspectionId: inspection._id,
-        facilityId: inspection.facilityId,
-      },
-  }));
-  afterCommit(() => EventPublisher.publishInspectionAssigned({
-    caseId: inspection.caseId.toString(),
-    inspectionId: inspection._id.toString(),
-    inspectorId: inspection.inspectorId.toString(),
-    facilityId: inspection.facilityId.toString(),
-    status: inspection.status,
-    timestamp: new Date().toISOString(),
-  }));
   return inspection;
 };
 
@@ -192,14 +222,22 @@ export const startInspection = async (caseId, actor) => {
           previousStatus: CASE_STATUSES.INSPECTION_ASSIGNED,
         },
       });
-  });
 
-  EventPublisher.publishInspectionStarted({
-      caseId: inspection.caseId.toString(),
-      inspectionId: inspection._id.toString(),
-      inspectorId: inspection.inspectorId.toString(),
-      facilityId: inspection.facilityId.toString(),
-      timestamp: new Date().toISOString(),
+      await Outbox.enqueue({
+        session,
+        type: 'INSPECTION_STARTED',
+        aggregateType: 'Inspection',
+        aggregateId: inspection._id,
+        commandId: undefined,
+        deduplicationKey: `${inspection._id}:INSPECTION_STARTED`,
+        payload: {
+          caseId: inspection.caseId.toString(),
+          inspectionId: inspection._id.toString(),
+          inspectorId: inspection.inspectorId.toString(),
+          facilityId: inspection.facilityId.toString(),
+          timestamp: inspection.startedAt.toISOString(),
+        },
+      });
   });
   return inspection;
 };
@@ -260,34 +298,46 @@ export const completeInspection = async (
         actorRole: actor.role,
         metadata: { condition, recommendedOutcome },
       });
-  });
 
-  EventPublisher.publishInspectionCompleted({
-      caseId: inspection.caseId.toString(),
-      inspectionId: inspection._id.toString(),
-      inspectorId: inspection.inspectorId.toString(),
-      facilityId: inspection.facilityId.toString(),
-      condition: inspection.condition,
-      recommendedOutcome: inspection.recommendedOutcome,
-      timestamp: new Date().toISOString(),
-  });
-  await Promise.all([
-      createNotification({
+      await Outbox.enqueue({
+        session,
+        type: 'INSPECTION_COMPLETED',
+        aggregateType: 'Inspection',
+        aggregateId: inspection._id,
+        commandId: undefined,
+        deduplicationKey: `${inspection._id}:INSPECTION_COMPLETED`,
+        payload: {
+          caseId: inspection.caseId.toString(),
+          inspectionId: inspection._id.toString(),
+          inspectorId: inspection.inspectorId.toString(),
+          facilityId: inspection.facilityId.toString(),
+          condition: inspection.condition,
+          recommendedOutcome: inspection.recommendedOutcome,
+          timestamp: inspection.completedAt.toISOString(),
+        },
+      });
+
+      await createAdminNotifications(
+        {
+          caseId: inspection.caseId,
+          type: CASE_STATUSES.INSPECTION_COMPLETED,
+          title: 'Decision needed',
+          message: 'A completed inspection is ready for an administrative decision.',
+          metadata: { inspectionId: inspection._id, recommendedOutcome },
+        },
+        { session },
+      );
+
+      await createNotification({
         userId: customerId,
         caseId: inspection.caseId,
         type: CASE_STATUSES.INSPECTION_COMPLETED,
         title: 'Inspection completed',
         message: 'Inspection of your recovered item was completed.',
         metadata: { inspectionId: inspection._id, recommendedOutcome },
-      }),
-      createAdminNotifications({
-        caseId: inspection.caseId,
-        type: CASE_STATUSES.INSPECTION_COMPLETED,
-        title: 'Decision needed',
-        message: 'A completed inspection is ready for an administrative decision.',
-        metadata: { inspectionId: inspection._id, recommendedOutcome },
-      }),
-  ]);
+        session,
+      });
+  });
   return inspection;
 };
 

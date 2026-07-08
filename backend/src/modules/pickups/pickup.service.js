@@ -6,7 +6,6 @@ import { USER_ROLES } from '../../constants/roles.js';
 import { TRANSFER_TYPES } from '../../constants/transferTypes.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
 import { CaseTransitionEngine } from '../../domain/caseTransitionEngine.js';
-import { EventPublisher } from '../../domain/eventPublisher.js';
 import { Outbox } from '../../domain/outbox.js';
 import { CustodyRecord } from '../../models/CustodyRecord.js';
 import { Facility } from '../../models/Facility.js';
@@ -39,7 +38,7 @@ const getPickupCase = async (pickup, session) => {
 export const assignPickup = async (
   input,
   actor,
-  { session, commandId, afterCommit } = {},
+  { session, commandId, afterCommit, logger } = {},
 ) => {
   const { caseId, courierId, facilityId, scheduledWindow } = input;
   if (!caseId || !courierId || !facilityId || !scheduledWindow?.start || !scheduledWindow?.end) {
@@ -108,9 +107,7 @@ export const assignPickup = async (
           previousStatus: CASE_STATUSES.CASE_CREATED,
         },
         commandId,
-        // Pickup Assignment delivers case:updated durably through the Outbox.
-        // Other workflows retain the legacy post-commit callback by default.
-        publishCaseUpdated: false,
+        logger,
         session,
       });
 
@@ -127,6 +124,7 @@ export const assignPickup = async (
           version: updatedCase.version,
           status: updatedCase.status,
         },
+        logger,
       });
 
       [assignedPickup] = await Pickup.create(
@@ -141,36 +139,50 @@ export const assignPickup = async (
         }],
         { session },
       );
-    },
-  });
-  afterCommit(async () => {
-    await Promise.all([
-      createNotification({
+
+      await Outbox.enqueue({
+        session,
+        type: 'PICKUP_ASSIGNED',
+        aggregateType: 'Pickup',
+        aggregateId: assignedPickup._id,
+        commandId,
+        deduplicationKey: `${commandId}:PICKUP_ASSIGNED:${assignedPickup._id}`,
+        payload: {
+          caseId: assignedPickup.caseId.toString(),
+          pickupId: assignedPickup._id.toString(),
+          customerId: assignedPickup.customerId.toString(),
+          courierId: assignedPickup.courierId.toString(),
+          status: assignedPickup.status,
+          timestamp: new Date().toISOString(),
+        },
+        logger,
+      });
+
+      await createNotification({
         userId: assignedPickup.courierId,
         caseId: assignedPickup.caseId,
         type: CASE_STATUSES.PICKUP_ASSIGNED,
         title: 'New pickup assigned',
         message: 'A new recovery pickup has been assigned to you.',
         metadata: { pickupId: assignedPickup._id },
-      }),
-      createNotification({
+        session,
+        commandId,
+        logger,
+      });
+
+      await createNotification({
         userId: assignedPickup.customerId,
         caseId: assignedPickup.caseId,
         type: CASE_STATUSES.PICKUP_ASSIGNED,
         title: 'Pickup assigned',
         message: 'A courier has been assigned to collect your item.',
         metadata: { pickupId: assignedPickup._id },
-      }),
-    ]);
+        session,
+        commandId,
+        logger,
+      });
+    },
   });
-  afterCommit(() => EventPublisher.publishPickupAssigned({
-      caseId: assignedPickup.caseId.toString(),
-      pickupId: assignedPickup._id.toString(),
-      customerId: assignedPickup.customerId.toString(),
-      courierId: assignedPickup.courierId.toString(),
-      status: assignedPickup.status,
-      timestamp: new Date().toISOString(),
-  }));
   return assignedPickup;
 };
 
@@ -196,22 +208,33 @@ export const acceptPickup = async (pickupId, courier) => {
           previousStatus: CASE_STATUSES.PICKUP_ASSIGNED,
         },
       });
-  });
-  EventPublisher.publishPickupAccepted({
-      caseId: acceptedPickup.caseId.toString(),
-      pickupId: acceptedPickup._id.toString(),
-      customerId: acceptedPickup.customerId.toString(),
-      courierId: acceptedPickup.courierId.toString(),
-      status: acceptedPickup.status,
-      timestamp: new Date().toISOString(),
-  });
-  await createNotification({
-      userId: acceptedPickup.customerId,
-      caseId: acceptedPickup.caseId,
-      type: CASE_STATUSES.PICKUP_ACCEPTED,
-      title: 'Courier accepted pickup',
-      message: 'The assigned courier accepted your pickup.',
-      metadata: { pickupId: acceptedPickup._id },
+
+      await Outbox.enqueue({
+        session,
+        type: 'PICKUP_ACCEPTED',
+        aggregateType: 'Pickup',
+        aggregateId: acceptedPickup._id,
+        commandId: undefined,
+        deduplicationKey: `${acceptedPickup._id}:PICKUP_ACCEPTED`,
+        payload: {
+          caseId: acceptedPickup.caseId.toString(),
+          pickupId: acceptedPickup._id.toString(),
+          customerId: acceptedPickup.customerId.toString(),
+          courierId: acceptedPickup.courierId.toString(),
+          status: acceptedPickup.status,
+          timestamp: acceptedPickup.acceptedAt.toISOString(),
+        },
+      });
+
+      await createNotification({
+        userId: acceptedPickup.customerId,
+        caseId: acceptedPickup.caseId,
+        type: CASE_STATUSES.PICKUP_ACCEPTED,
+        title: 'Courier accepted pickup',
+        message: 'The assigned courier accepted your pickup.',
+        metadata: { pickupId: acceptedPickup._id },
+        session,
+      });
   });
   return acceptedPickup;
 };
@@ -255,32 +278,28 @@ export const collectPickup = async (pickupId, { proof } = {}, courier) => {
         }],
         { session },
       );
-  });
-  EventPublisher.publishPickupCollected({
-      caseId: collectedPickup.caseId.toString(),
-      pickupId: collectedPickup._id.toString(),
-      customerId: collectedPickup.customerId.toString(),
-      courierId: collectedPickup.courierId.toString(),
-      status: collectedPickup.status,
-      timestamp: new Date().toISOString(),
-  });
-  await Promise.all([
-      createNotification({
+
+      await createAdminNotifications(
+        {
+          caseId: collectedPickup.caseId,
+          type: CASE_STATUSES.ITEM_COLLECTED,
+          title: 'Item collected',
+          message: 'A recovery item was collected by its courier.',
+          metadata: { pickupId: collectedPickup._id },
+        },
+        { session },
+      );
+
+      await createNotification({
         userId: collectedPickup.customerId,
         caseId: collectedPickup.caseId,
         type: CASE_STATUSES.ITEM_COLLECTED,
         title: 'Item collected by courier',
         message: 'Your item was collected by the courier.',
         metadata: { pickupId: collectedPickup._id },
-      }),
-      createAdminNotifications({
-        caseId: collectedPickup.caseId,
-        type: CASE_STATUSES.ITEM_COLLECTED,
-        title: 'Item collected',
-        message: 'A recovery item was collected by its courier.',
-        metadata: { pickupId: collectedPickup._id },
-      }),
-  ]);
+        session,
+      });
+  });
   return collectedPickup;
 };
 

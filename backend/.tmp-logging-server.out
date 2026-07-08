@@ -1,0 +1,4 @@
+◇ injected env (4) from .env // tip: ⌘ override existing { override: true }
+{"level":30,"time":"2026-07-07T15:39:15.078Z","service":"reclaimloop-backend","environment":"development","pid":35900,"mongoHost":"ac-jsvtcoz-shard-00-02.tfdb56x.mongodb.net","msg":"MongoDB connected"}
+Outbox worker started (omen:35900:c74a6b53-1be2-40c1-879d-05626735fbfd)
+{"level":30,"time":"2026-07-07T15:39:15.082Z","service":"reclaimloop-backend","environment":"development","pid":35900,"port":5099,"msg":"ReclaimLoop API listening"}

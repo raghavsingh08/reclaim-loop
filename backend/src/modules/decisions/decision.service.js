@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import { CASE_STATUSES } from '../../constants/caseStatus.js';
 import { DECISION_TYPES, DECISION_TYPE_VALUES } from '../../constants/decisionTypes.js';
 import { CaseEngine } from '../../domain/caseEngine.js';
-import { EventPublisher } from '../../domain/eventPublisher.js';
 import { Decision } from '../../models/Decision.js';
 import { Inspection } from '../../models/Inspection.js';
 import { RecoveryCase } from '../../models/RecoveryCase.js';
@@ -53,20 +52,17 @@ export const startDecisionReview = async (caseId, actor) => {
           inspectionId: inspection._id,
         },
       });
-  });
-  await createAdminNotifications({
-      caseId: updatedCase._id,
-      type: CASE_STATUSES.DECISION_PENDING,
-      title: 'Case pending decision',
-      message: 'A recovery case is awaiting an administrative decision.',
-      metadata: { recommendation: updatedCase.outcome },
-  });
-  EventPublisher.publishDecisionPending({
-      caseId: updatedCase._id.toString(),
-      recommendation: updatedCase.outcome,
-      actorId: actor._id.toString(),
-      actorRole: actor.role,
-      timestamp: new Date().toISOString(),
+
+      await createAdminNotifications(
+        {
+          caseId: updatedCase._id,
+          type: CASE_STATUSES.DECISION_PENDING,
+          title: 'Case pending decision',
+          message: 'A recovery case is awaiting an administrative decision.',
+          metadata: { recommendation: updatedCase.outcome },
+        },
+        { session },
+      );
   });
   return updatedCase;
 };
@@ -112,26 +108,19 @@ export const makeDecision = async (
           comments: comments?.trim() || null,
         },
       });
-  });
-  await createNotification({
-      userId: updatedCase.customerId,
-      caseId: updatedCase._id,
-      type: updatedCase.status,
-      title: 'Decision recorded',
-      message: 'A decision was recorded for your recovery case.',
-      metadata: {
-        decisionId: decisionRecord._id,
-        decision: decisionRecord.decision,
-      },
-  });
-  EventPublisher.publishDecisionCompleted({
-      caseId: updatedCase._id.toString(),
-      decisionId: decisionRecord._id.toString(),
-      decision: decisionRecord.decision,
-      recommendation: decisionRecord.recommendation,
-      actorId: actor._id.toString(),
-      actorRole: actor.role,
-      timestamp: new Date().toISOString(),
+
+      await createNotification({
+        userId: updatedCase.customerId,
+        caseId: updatedCase._id,
+        type: updatedCase.status,
+        title: 'Decision recorded',
+        message: 'A decision was recorded for your recovery case.',
+        metadata: {
+          decisionId: decisionRecord._id,
+          decision: decisionRecord.decision,
+        },
+        session,
+      });
   });
   return { case: updatedCase, decision: decisionRecord };
 };
