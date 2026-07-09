@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
@@ -19,6 +19,8 @@ export function InspectorCaseDetail() {
 
   const [caseData, setCaseData] = useState(null);
   const [timeline, setTimeline] = useState([]);
+  const [timelinePageInfo, setTimelinePageInfo] = useState({ nextCursor: null, hasNextPage: false });
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [inspection, setInspection] = useState(null);
   
   const [loading, setLoading] = useState(true);
@@ -31,17 +33,22 @@ export function InspectorCaseDetail() {
   const [condition, setCondition] = useState('');
   const [notes, setNotes] = useState('');
   const [recommendedOutcome, setRecommendedOutcome] = useState('');
+  const timelineRequestGenerationRef = useRef(0);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      const generation = ++timelineRequestGenerationRef.current;
       const [cData, tData, inspData] = await Promise.all([
         getCaseById(caseId),
-        getCaseTimeline(caseId).catch(() => []),
+        getCaseTimeline(caseId).catch(() => ({ events: [], pageInfo: { nextCursor: null, hasNextPage: false } })),
         getCaseInspection(caseId).catch(() => null)
       ]);
       setCaseData(cData);
-      setTimeline(Array.isArray(tData) ? tData : (tData?.events || []));
+      if (generation === timelineRequestGenerationRef.current) {
+        setTimeline(tData?.events ?? []);
+        setTimelinePageInfo(tData?.pageInfo ?? { nextCursor: null, hasNextPage: false });
+      }
       setInspection(inspData);
     } catch (err) {
       setError(err.message || 'Case not found');
@@ -53,6 +60,26 @@ export function InspectorCaseDetail() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleLoadMoreTimeline = async () => {
+    if (!timelinePageInfo.hasNextPage || !timelinePageInfo.nextCursor || timelineLoadingMore) return;
+    const generation = timelineRequestGenerationRef.current;
+    setTimelineLoadingMore(true);
+    try {
+      const timelineData = await getCaseTimeline(caseId, { cursor: timelinePageInfo.nextCursor });
+      if (generation !== timelineRequestGenerationRef.current) return;
+      setTimeline((current) => {
+        const existingIds = new Set(current.map(({ _id }) => _id));
+        const nextEvents = (timelineData.events ?? []).filter(({ _id }) => !existingIds.has(_id));
+        return [...current, ...nextEvents];
+      });
+      setTimelinePageInfo(timelineData.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    } catch (err) {
+      setError(err.message || 'Failed to load timeline events');
+    } finally {
+      setTimelineLoadingMore(false);
+    }
+  };
 
   const handleAction = async (actionFn, successMsg) => {
     setSuccessMessage(null);
@@ -201,6 +228,16 @@ export function InspectorCaseDetail() {
                       </div>
                     </div>
                   ))}
+                  {timelinePageInfo.hasNextPage && (
+                    <Button
+                      variant="secondary"
+                      onClick={handleLoadMoreTimeline}
+                      disabled={timelineLoadingMore}
+                      style={{ alignSelf: 'flex-start', marginLeft: '40px' }}
+                    >
+                      {timelineLoadingMore ? 'Loading...' : 'Load More'}
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />

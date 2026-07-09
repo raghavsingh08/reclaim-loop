@@ -18,6 +18,56 @@ import {
   createNotification,
 } from '../notifications/notification.service.js';
 
+const DEFAULT_PICKUP_LIMIT = 25;
+const MAX_PICKUP_LIMIT = 100;
+const PICKUP_CURSOR_VERSION = 1;
+
+const parsePickupLimit = (value) => {
+  if (value === undefined) return DEFAULT_PICKUP_LIMIT;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new ApiError(400, 'Pickup limit must be an integer between 1 and 100');
+  }
+
+  const limit = Number(value);
+  if (limit < 1 || limit > MAX_PICKUP_LIMIT) {
+    throw new ApiError(400, 'Pickup limit must be an integer between 1 and 100');
+  }
+  return limit;
+};
+
+const encodePickupCursor = ({ createdAt, _id }) => Buffer.from(JSON.stringify({
+  v: PICKUP_CURSOR_VERSION,
+  createdAt: createdAt.toISOString(),
+  id: _id.toString(),
+})).toString('base64url');
+
+const decodePickupCursor = (value) => {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !/^[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    throw new ApiError(400, 'Invalid pickup cursor');
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const createdAt = new Date(decoded.createdAt);
+    if (
+      decoded.v !== PICKUP_CURSOR_VERSION ||
+      typeof decoded.createdAt !== 'string' ||
+      Number.isNaN(createdAt.getTime()) ||
+      typeof decoded.id !== 'string' ||
+      !mongoose.isValidObjectId(decoded.id)
+    ) {
+      throw new Error('Invalid cursor payload');
+    }
+    return { createdAt, id: new mongoose.Types.ObjectId(decoded.id) };
+  } catch {
+    throw new ApiError(400, 'Invalid pickup cursor');
+  }
+};
+
 const requireObjectId = (value, label) => {
   if (!mongoose.isValidObjectId(value)) throw new ApiError(400, `Invalid ${label}`);
 };
@@ -73,11 +123,11 @@ export const assignPickup = async (
         _id: courierId,
         role: USER_ROLES.COURIER,
         isActive: true,
-      }).session(session);
+      }).select('_id role isActive').session(session);
       const facility = await Facility.findOne({
         _id: facilityId,
         isActive: true,
-      }).session(session);
+      }).select('_id isActive').session(session);
       if (!recoveryCase.pickupAddress) throw new ApiError(400, 'Recovery case is missing a pickup address. Cannot assign courier.');
       if (!courier) throw new ApiError(400, 'Courier must be an active COURIER user');
       if (!facility) throw new ApiError(400, 'Facility must be an active facility');
@@ -372,10 +422,35 @@ export const failPickup = async (pickupId, { reason } = {}, courier) => {
   return failedPickup;
 };
 
-export const getMyPickups = (courier) =>
-  Pickup.find({ courierId: courier._id })
+export const getMyPickups = async (courier, { limit: rawLimit, cursor: rawCursor } = {}) => {
+  const limit = parsePickupLimit(rawLimit);
+  const filter = { courierId: courier._id };
+
+  if (rawCursor !== undefined) {
+    const cursor = decodePickupCursor(rawCursor);
+    filter.$or = [
+      { createdAt: { $lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+    ];
+  }
+
+  const results = await Pickup.find(filter)
     .populate('facilityId', 'name type location')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .lean();
+  const hasNextPage = results.length > limit;
+  const pickups = hasNextPage ? results.slice(0, limit) : results;
+  const lastPickup = pickups.at(-1);
+
+  return {
+    pickups,
+    pageInfo: {
+      nextCursor: hasNextPage && lastPickup ? encodePickupCursor(lastPickup) : null,
+      hasNextPage,
+    },
+  };
+};
 
 export const getPickupById = async (pickupId, user) => {
   requireObjectId(pickupId, 'pickup ID');
@@ -386,11 +461,13 @@ export const getPickupById = async (pickupId, user) => {
     throw new ApiError(403, 'Unauthorized to view pickup details');
   }
 
-  const pickup = await Pickup.findOne(query).populate('facilityId', 'name type location');
+  const pickup = await Pickup.findOne(query)
+    .populate('facilityId', 'name type location')
+    .lean();
   if (!pickup) {
     throw new ApiError(404, 'Pickup not found');
   }
   
-  const recoveryCase = await RecoveryCase.findById(pickup.caseId);
+  const recoveryCase = await RecoveryCase.findById(pickup.caseId).lean();
   return { pickup, recoveryCase, facility: pickup.facilityId };
 };

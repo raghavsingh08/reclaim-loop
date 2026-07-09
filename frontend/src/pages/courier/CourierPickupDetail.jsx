@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { formatDateTime, formatTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
@@ -19,23 +19,33 @@ export function CourierPickupDetail() {
 
   const [pickup, setPickup] = useState(null);
   const [timeline, setTimeline] = useState([]);
+  const [timelinePageInfo, setTimelinePageInfo] = useState({ nextCursor: null, hasNextPage: false });
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const timelineRequestGenerationRef = useRef(0);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      const generation = ++timelineRequestGenerationRef.current;
       const data = await getPickupDetail(pickupId);
       setPickup(data);
       
       const actualCaseId = data?.caseId?._id || data?.caseId;
       if (actualCaseId) {
-        const events = await getPickupTimeline(actualCaseId);
-        setTimeline(events);
+        const timelineData = await getPickupTimeline(actualCaseId);
+        if (generation === timelineRequestGenerationRef.current) {
+          setTimeline(timelineData.events ?? []);
+          setTimelinePageInfo(timelineData.pageInfo ?? { nextCursor: null, hasNextPage: false });
+        }
+      } else if (generation === timelineRequestGenerationRef.current) {
+        setTimeline([]);
+        setTimelinePageInfo({ nextCursor: null, hasNextPage: false });
       }
     } catch (err) {
       setError('Pickup not found');
@@ -68,6 +78,28 @@ export function CourierPickupDetail() {
     (id) => deliverPickup(id, { scanCode: 'FACILITY-SCAN', note: 'Delivered to destination facility' }), 
     'Item delivered to facility successfully!'
   );
+
+  const handleLoadMoreTimeline = async () => {
+    if (!timelinePageInfo.hasNextPage || !timelinePageInfo.nextCursor || timelineLoadingMore) return;
+    const actualCaseId = pickup?.caseId?._id || pickup?.caseId;
+    if (!actualCaseId) return;
+    const generation = timelineRequestGenerationRef.current;
+    setTimelineLoadingMore(true);
+    try {
+      const timelineData = await getPickupTimeline(actualCaseId, { cursor: timelinePageInfo.nextCursor });
+      if (generation !== timelineRequestGenerationRef.current) return;
+      setTimeline((current) => {
+        const existingIds = new Set(current.map(({ _id }) => _id));
+        const nextEvents = (timelineData.events ?? []).filter(({ _id }) => !existingIds.has(_id));
+        return [...current, ...nextEvents];
+      });
+      setTimelinePageInfo(timelineData.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    } catch (err) {
+      setError(err.message || 'Failed to load timeline events');
+    } finally {
+      setTimelineLoadingMore(false);
+    }
+  };
 
   if (loading && !pickup) return <LoadingState text="Loading pickup details..." />;
   if (error || !pickup) return <ErrorState title="Not Found" description={error || "Pickup not found."} />;
@@ -252,6 +284,16 @@ export function CourierPickupDetail() {
                       </div>
                     </div>
                   ))}
+                  {timelinePageInfo.hasNextPage && (
+                    <Button
+                      variant="secondary"
+                      onClick={handleLoadMoreTimeline}
+                      disabled={timelineLoadingMore}
+                      style={{ alignSelf: 'flex-start', marginLeft: '40px' }}
+                    >
+                      {timelineLoadingMore ? 'Loading...' : 'Load More'}
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />

@@ -41,6 +41,7 @@ const inspectionSchema = new mongoose.Schema(
 
 inspectionSchema.index({ caseId: 1 });
 inspectionSchema.index({ inspectorId: 1 });
+inspectionSchema.index({ inspectorId: 1, createdAt: -1, _id: -1 });
 inspectionSchema.index({ facilityId: 1 });
 
 export const Inspection = mongoose.model('Inspection', inspectionSchema);

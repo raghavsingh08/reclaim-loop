@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getCourierDashboard, getMyPickups, acceptPickup, collectPickup } from '../../services/courier';
+import { getCourierDashboard, acceptPickup, collectPickup } from '../../services/courier';
 import { Truck, MapPin, Calendar, Clock, CheckCircle } from 'lucide-react';
 import './CourierDashboard.css';
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
@@ -14,19 +14,14 @@ export function CourierDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
-  const [pickups, setPickups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null); // stores pickupId being acted upon
 
   const loadData = useCallback(async () => {
     try {
-      const [dashboardData, myPickupsData] = await Promise.all([
-        getCourierDashboard(),
-        getMyPickups()
-      ]);
+      const dashboardData = await getCourierDashboard();
       setStats(dashboardData);
-      setPickups(myPickupsData);
       setError(null);
     } catch (err) {
       setError(err.message || 'Failed to load courier data');
@@ -60,6 +55,8 @@ export function CourierDashboard() {
   if (loading && !stats) return <LoadingState text="Loading logistics dashboard..." />;
   if (error) return <ErrorState title="Error" description={error} />;
 
+  const pickups = stats?.activePickups ?? [];
+
   return (
     <div className="courier-dashboard">
       <div className="dashboard-header">
@@ -79,7 +76,7 @@ export function CourierDashboard() {
             </div>
             <div className="kpi-details">
               <span className="kpi-label">Assigned Pickups</span>
-              <span className="kpi-value">{stats?.assignedPickups || 0}</span>
+              <span className="kpi-value">{stats?.assignedPickups ?? 0}</span>
             </div>
           </CardContent>
         </Card>
@@ -90,7 +87,7 @@ export function CourierDashboard() {
             </div>
             <div className="kpi-details">
               <span className="kpi-label">Accepted (Pending Collection)</span>
-              <span className="kpi-value">{stats?.acceptedPickups || 0}</span>
+              <span className="kpi-value">{stats?.acceptedPickups ?? 0}</span>
             </div>
           </CardContent>
         </Card>
@@ -100,15 +97,15 @@ export function CourierDashboard() {
               <CheckCircle size={24} />
             </div>
             <div className="kpi-details">
-              <span className="kpi-label">Completed Today</span>
-              <span className="kpi-value">{stats?.completedPickups || 0}</span>
+              <span className="kpi-label">Collected Pickups</span>
+              <span className="kpi-value">{stats?.collectedPickups ?? 0}</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="pickups-section">
-        <h2 className="section-title">My Pickups</h2>
+        <h2 className="section-title">Active Pickups</h2>
         
         {pickups.length > 0 ? (
           <div className="pickups-list">
@@ -147,7 +144,7 @@ export function CourierDashboard() {
                           <MapPin size={16} />
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 'bold' }}>Deliver To</span>
-                            <span>{pickup.facilityId.name}, {pickup.facilityId.address?.city || 'Facility'}</span>
+                            <span>{pickup.facilityId.name}, {pickup.facilityId.location?.city || 'Facility'}</span>
                           </div>
                         </div>
                       )}
@@ -182,7 +179,7 @@ export function CourierDashboard() {
                     {pickup.status === 'COLLECTED' && (
                       <Button disabled variant="outline">
                         <CheckCircle size={16} style={{ marginRight: '8px' }} />
-                        Completed
+                        Collected
                       </Button>
                     )}
                     {pickup.status === 'FAILED' && (

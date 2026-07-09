@@ -1,26 +1,39 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate } from '../../utils/formatters';
-import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications';
+import {
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from '../../services/notifications';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { Bell, Check, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMyPickups } from '../../services/courier';
+import { getPickupIdForCase } from '../../services/courier';
 import { useNotificationsRealtime } from '../../hooks/useNotificationsRealtime';
 
 export function Notifications() {
   const [notifications, setNotifications] = useState([]);
+  const [pageInfo, setPageInfo] = useState({ nextCursor: null, hasNextPage: false });
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const navigate = useNavigate();
   const { user } = useAuth();
   const fetchNotifications = useCallback(async () => {
     try {
-      const data = await getNotifications();
-      setNotifications(data.notifications || data || []);
+      const [data, countData] = await Promise.all([
+        getNotifications({ limit: 25 }),
+        getUnreadNotificationCount(),
+      ]);
+      setNotifications(data.notifications ?? []);
+      setPageInfo(data.pageInfo ?? { nextCursor: null, hasNextPage: false });
+      setUnreadCount(countData.unreadNotificationsCount ?? 0);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -34,6 +47,27 @@ export function Notifications() {
   }, [fetchNotifications]);
 
   useNotificationsRealtime(fetchNotifications);
+
+  const handleLoadMore = async () => {
+    if (!pageInfo.hasNextPage || !pageInfo.nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await getNotifications({ cursor: pageInfo.nextCursor, limit: 25 });
+      const nextNotifications = data.notifications ?? [];
+      setNotifications((current) => {
+        const existingIds = new Set(current.map(({ _id }) => _id));
+        return [
+          ...current,
+          ...nextNotifications.filter(({ _id }) => !existingIds.has(_id)),
+        ];
+      });
+      setPageInfo(data.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleMarkAsRead = async (e, id) => {
     e.stopPropagation(); // prevent navigation if clicked
@@ -61,27 +95,28 @@ export function Notifications() {
 
   const handleNotificationClick = async (notification) => {
     if (!notification.isRead) {
-      markNotificationAsRead(notification._id).then(() => {
+      try {
+        await markNotificationAsRead(notification._id);
+        await fetchNotifications();
         window.dispatchEvent(new Event('notifications:refresh'));
-      }).catch(console.error);
+      } catch (err) {
+        console.error(err);
+      }
     }
     if (notification.caseId && user?.role) {
       const role = user.role.toUpperCase();
       
       if (role === 'COURIER') {
         try {
-          const pickups = await getMyPickups();
-          const pickup = pickups.find(p => 
-            String(p.caseId) === String(notification.caseId) || 
-            String(p.caseId?._id) === String(notification.caseId)
-          );
-          if (pickup) {
-            navigate(`/courier/pickups/${pickup._id}`);
+          const pickupId = notification.metadata?.pickupId
+            ?? await getPickupIdForCase(notification.caseId);
+          if (pickupId) {
+            navigate(`/courier/pickups/${pickupId}`);
           } else {
-            showToast("Pickup not found for this notification.");
+            showToast('This notification is not linked to a pickup.');
           }
         } catch (err) {
-          showToast("Error finding pickup");
+          showToast('Unable to open the pickup for this notification.');
         }
       } else if (role === 'INSPECTOR') {
         navigate(`/inspector/inspections/${notification.caseId}`);
@@ -95,8 +130,6 @@ export function Notifications() {
 
   if (loading) return <LoadingState text="Loading notifications..." />;
   if (error) return <ErrorState title="Failed to load notifications" description={error} />;
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
@@ -179,6 +212,16 @@ export function Notifications() {
               </CardContent>
             </Card>
           ))}
+          {pageInfo.hasNextPage && (
+            <Button
+              variant="outline"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              style={{ alignSelf: 'center' }}
+            >
+              {loadingMore ? 'Loading...' : 'Load More'}
+            </Button>
+          )}
         </div>
       ) : (
         <EmptyState 

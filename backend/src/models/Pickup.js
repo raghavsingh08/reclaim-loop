@@ -42,5 +42,6 @@ const pickupSchema = new mongoose.Schema(
 );
 
 pickupSchema.index({ courierId: 1, status: 1 });
+pickupSchema.index({ courierId: 1, createdAt: -1, _id: -1 });
 
 export const Pickup = mongoose.model('Pickup', pickupSchema);

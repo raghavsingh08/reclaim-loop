@@ -5,43 +5,51 @@ export const getCourierDashboard = async () => {
   return response.data?.data || response.data;
 };
 
-export const getMyPickups = async () => {
-  const response = await api.get('/pickups/my');
-  return response.data?.data?.pickups || response.data?.data || response.data || [];
+export const getMyPickups = async ({ cursor, limit } = {}) => {
+  const response = await api.get('/pickups/my', {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
+  const data = response.data?.data || response.data;
+  return {
+    pickups: data?.pickups ?? [],
+    pageInfo: data?.pageInfo ?? { nextCursor: null, hasNextPage: false },
+  };
 };
 
 export const getPickupDetail = async (pickupId) => {
-  try {
-    const response = await api.get(`/pickups/${pickupId}`);
-    const data = response.data?.data || response.data;
-    if (data.pickup) {
-      return {
-        ...data.pickup,
-        caseData: data.recoveryCase,
-        facility: data.facility
-      };
-    }
-  } catch (err) {
-    // fallback to list if endpoint fails
-  }
-
-  const pickups = await getMyPickups();
-  const pickup = pickups.find(p => p._id === pickupId);
-  
-  if (!pickup) {
-    throw new Error('Pickup not found');
-  }
-
-  // Fetch associated case data for product info
-  const caseRes = await api.get(`/cases/${pickup.caseId}`);
-  pickup.caseData = caseRes.data?.data?.case || caseRes.data?.data || caseRes.data;
-  
-  return pickup;
+  const response = await api.get(`/pickups/${pickupId}`);
+  const data = response.data?.data || response.data;
+  return {
+    ...data.pickup,
+    caseData: data.recoveryCase,
+    facility: data.facility,
+  };
 };
 
-export const getPickupTimeline = async (caseId) => {
-  const response = await api.get(`/cases/${caseId}/timeline`);
-  return response.data?.data?.events || response.data?.data || response.data || [];
+export const getPickupIdForCase = async (caseId) => {
+  const response = await api.get(`/cases/${caseId}`);
+  const data = response.data?.data || response.data;
+  return data?.case?.pickupId ?? data?.recoveryCase?.pickupId ?? data?.pickupId ?? null;
+};
+
+export const getPickupTimeline = async (caseId, { cursor, limit } = {}) => {
+  const response = await api.get(`/cases/${caseId}/timeline`, {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
+  const data = response.data?.data || response.data || {};
+  return {
+    events: data.events ?? [],
+    pageInfo: data.pageInfo ?? {
+      nextCursor: null,
+      hasNextPage: false,
+    },
+  };
 };
 
 export const acceptPickup = async (pickupId) => {

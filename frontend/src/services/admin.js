@@ -5,8 +5,13 @@ export const getAdminDashboard = async () => {
   return response.data?.data || response.data;
 };
 
-export const listAllCases = async () => {
-  const response = await api.get('/cases');
+export const listAllCases = async ({ cursor, limit } = {}) => {
+  const response = await api.get('/cases', {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
   return response.data?.data || response.data;
 };
 
@@ -20,9 +25,21 @@ export const getCaseById = async (caseId) => {
   return response.data?.data?.case || response.data?.data?.recoveryCase || response.data?.data || response.data;
 };
 
-export const getCaseTimeline = async (caseId) => {
-  const response = await api.get(`/cases/${caseId}/timeline`);
-  return response.data?.data?.events || response.data?.data?.timeline || response.data?.data || response.data;
+export const getCaseTimeline = async (caseId, { cursor, limit } = {}) => {
+  const response = await api.get(`/cases/${caseId}/timeline`, {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
+  const data = response.data?.data || response.data || {};
+  return {
+    events: data.events ?? [],
+    pageInfo: data.pageInfo ?? {
+      nextCursor: null,
+      hasNextPage: false,
+    },
+  };
 };
 
 export const getCaseDecisions = async (caseId) => {

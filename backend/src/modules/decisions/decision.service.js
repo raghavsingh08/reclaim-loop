@@ -28,7 +28,7 @@ const getCompletedInspection = async (caseId, session) => {
   const inspection = await Inspection.findOne({
     caseId,
     completedAt: { $ne: null },
-  }).session(session);
+  }).select('_id recommendedOutcome').session(session).lean();
   if (!inspection) throw new ApiError(409, 'A completed inspection is required');
   return inspection;
 };
@@ -130,5 +130,5 @@ export const getCaseDecisions = async (caseId) => {
   if (!(await RecoveryCase.exists({ _id: caseId }))) {
     throw new ApiError(404, 'Recovery case not found');
   }
-  return Decision.find({ caseId }).sort({ createdAt: -1 });
+  return Decision.find({ caseId }).sort({ createdAt: -1 }).lean();
 };

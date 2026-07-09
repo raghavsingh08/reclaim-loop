@@ -21,5 +21,6 @@ export const listUsers = async ({ role } = {}) => {
 
   return User.find(filter)
     .select(USER_LIST_FIELDS)
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 };

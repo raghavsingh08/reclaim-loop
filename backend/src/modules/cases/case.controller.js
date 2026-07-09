@@ -15,8 +15,8 @@ export const createRecoveryCase = asyncHandler(async (req, res) => {
 });
 
 export const getRecoveryCases = asyncHandler(async (req, res) => {
-  const cases = await listCases(req.user);
-  res.status(200).json(new ApiResponse(200, { cases }, 'Recovery cases retrieved'));
+  const result = await listCases(req.user, req.query);
+  res.status(200).json(new ApiResponse(200, result, 'Recovery cases retrieved'));
 });
 
 export const getRecoveryCase = asyncHandler(async (req, res) => {
@@ -25,8 +25,8 @@ export const getRecoveryCase = asyncHandler(async (req, res) => {
 });
 
 export const getRecoveryCaseTimeline = asyncHandler(async (req, res) => {
-  const events = await getCaseTimeline(req.params.caseId, req.user);
-  res.status(200).json(new ApiResponse(200, { events }, 'Case timeline retrieved'));
+  const result = await getCaseTimeline(req.params.caseId, req.user, req.query);
+  res.status(200).json(new ApiResponse(200, result, 'Case timeline retrieved'));
 });
 
 export const getRecoveryCaseCustody = asyncHandler(async (req, res) => {

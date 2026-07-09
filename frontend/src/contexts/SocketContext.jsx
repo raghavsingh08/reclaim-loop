@@ -12,9 +12,7 @@ export function SocketProvider({ children }) {
     let newSocket;
     
     if (isAuthenticated) {
-      const socketUrl = import.meta.env.VITE_API_BASE_URL 
-        ? import.meta.env.VITE_API_BASE_URL.replace('/api', '') 
-        : 'http://localhost:5000';
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
         
       const token = localStorage.getItem('token');
       newSocket = io(socketUrl, {

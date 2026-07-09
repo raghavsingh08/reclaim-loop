@@ -1,10 +1,14 @@
 import axios from "axios";
 
 const API_BASE_URL = "http://localhost:5000/api";
-const ADMIN_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiQURNSU4iLCJpYXQiOjE3ODM0MDcyNjEsImV4cCI6MTc4MzQ5MzY2MSwic3ViIjoiNmE0NTc2OGY3NjQ4NGMyMzU5MmMwMjRiIn0.x_rN5TGKyUdGh5kzl5mGRLWpduesq3zYlAQrfrmGi6k";
+const ADMIN_JWT = process.env.ADMIN_JWT;
 const CASE_ID = "6a4ca6c2cff028e71f2d5d07";
 const COURIER_ID = "6a45760e76484c23592c0248";
 const FACILITY_ID = "6a46088aa642e63ffbe53cf2";
+
+if (!ADMIN_JWT) {
+  throw new Error("ADMIN_JWT environment variable is required");
+}
 
 const body = {
   caseId: CASE_ID,

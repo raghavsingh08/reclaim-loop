@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { formatDate } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
@@ -8,23 +8,59 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ArrowRight, PackageOpen } from 'lucide-react';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
 
 export function CaseList() {
-  const [cases, setCases] = useState(null);
+  const [cases, setCases] = useState([]);
+  const [pageInfo, setPageInfo] = useState({ nextCursor: null, hasNextPage: false });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+  const requestGeneration = useRef(0);
   const navigate = useNavigate();
   const { isDesktop } = useResponsiveLayout();
 
-  useEffect(() => {
-    listCases()
-      .then((data) => {
-        // Backend listCases returns { cases: [...] }
-        setCases(data.cases || data);
-      })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+  const fetchFirstPage = useCallback(async () => {
+    const generation = ++requestGeneration.current;
+    setLoadingMore(false);
+    try {
+      const data = await listCases({ limit: 25 });
+      if (generation !== requestGeneration.current) return;
+      setCases(data.cases ?? []);
+      setPageInfo(data.pageInfo ?? { nextCursor: null, hasNextPage: false });
+      setError(null);
+    } catch (err) {
+      if (generation === requestGeneration.current) setError(err.message);
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchFirstPage();
+  }, [fetchFirstPage]);
+
+  useDashboardRealtime(fetchFirstPage);
+
+  const handleLoadMore = async () => {
+    if (!pageInfo.hasNextPage || !pageInfo.nextCursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    try {
+      const data = await listCases({ cursor: pageInfo.nextCursor, limit: 25 });
+      if (generation !== requestGeneration.current) return;
+      const nextCases = data.cases ?? [];
+      setCases((current) => {
+        const existingIds = new Set(current.map(({ _id }) => _id));
+        return [...current, ...nextCases.filter(({ _id }) => !existingIds.has(_id))];
+      });
+      setPageInfo(data.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    } catch (err) {
+      if (generation === requestGeneration.current) setError(err.message);
+    } finally {
+      if (generation === requestGeneration.current) setLoadingMore(false);
+    }
+  };
 
   if (loading) return <LoadingState text="Loading your cases..." />;
   if (error) return <ErrorState title="Failed to load cases" description={error} />;
@@ -145,6 +181,13 @@ export function CaseList() {
                   </div>
                 ))}
               </div>
+              )}
+              {pageInfo.hasNextPage && (
+                <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+                  <Button variant="outline" onClick={handleLoadMore} disabled={loadingMore}>
+                    {loadingMore ? 'Loading...' : 'Load More'}
+                  </Button>
+                </div>
               )}
             </>
           ) : (

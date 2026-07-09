@@ -66,8 +66,8 @@ export const fail = asyncHandler(async (req, res) => {
 });
 
 export const getMine = asyncHandler(async (req, res) => {
-  const pickups = await getMyPickups(req.user);
-  res.status(200).json(new ApiResponse(200, { pickups }, 'Assigned pickups retrieved'));
+  const result = await getMyPickups(req.user, req.query);
+  res.status(200).json(new ApiResponse(200, result, 'Assigned pickups retrieved'));
 });
 
 export const getById = asyncHandler(async (req, res) => {

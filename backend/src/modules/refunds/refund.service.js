@@ -69,15 +69,17 @@ export const recordRefund = async (
       const existingEntry = await LedgerEntry.findOne({
         caseId: recoveryCase._id,
         type: REFUND_OBLIGATION,
-      }).session(session);
+      }).select('_id').session(session).lean();
       if (existingEntry) throw new ApiError(409, 'Refund obligation is already recorded');
 
       const approvalEvent = await Event.findOne({
         caseId: recoveryCase._id,
         type: CASE_STATUSES.REFUND_APPROVED,
       })
+        .select('metadata createdAt')
         .sort({ createdAt: -1 })
-        .session(session);
+        .session(session)
+        .lean();
       const approvedAmount = approvalEvent?.metadata?.amount;
       if (!Number.isFinite(approvedAmount) || approvedAmount <= 0) {
         throw new ApiError(409, 'Refund approval amount is unavailable');
@@ -135,5 +137,5 @@ export const getRefundEntries = async (caseId) => {
   if (!(await RecoveryCase.exists({ _id: caseId }))) {
     throw new ApiError(404, 'Recovery case not found');
   }
-  return LedgerEntry.find({ caseId, type: REFUND_OBLIGATION }).sort({ createdAt: -1 });
+  return LedgerEntry.find({ caseId, type: REFUND_OBLIGATION }).sort({ createdAt: -1 }).lean();
 };

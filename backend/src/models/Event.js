@@ -30,6 +30,7 @@ const eventSchema = new mongoose.Schema(
 );
 
 eventSchema.index({ caseId: 1, createdAt: 1 });
+eventSchema.index({ caseId: 1, createdAt: 1, _id: 1 });
 
 eventSchema.pre('save', function rejectExistingDocumentSave() {
   if (!this.isNew) throw appendOnlyError('saving an existing Event');

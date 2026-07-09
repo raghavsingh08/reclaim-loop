@@ -37,7 +37,14 @@ const canAccessCase = async (caseId, user) => {
 
 export const initializeSocket = (httpServer) => {
   const io = new Server(httpServer, {
-    cors: { origin: '*' },
+    cors: {
+      origin(origin, callback) {
+        if (!origin || env.corsOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+      },
+    },
   });
 
   io.use(async (socket, next) => {

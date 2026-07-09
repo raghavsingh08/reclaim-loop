@@ -12,16 +12,21 @@ export const getInspectorDashboard = async () => {
   }
 };
 
-export const getMyInspections = async () => {
-  try {
-    const response = await api.get('/inspections/my');
-    return response.data?.data?.inspections || response.data?.data || response.data || [];
-  } catch (error) {
-    if (error.response?.status === 400 || error.response?.status === 404) {
-      return [];
-    }
-    throw error;
-  }
+export const getMyInspections = async ({ cursor, limit } = {}) => {
+  const response = await api.get('/inspections/my', {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
+  const data = response.data?.data || response.data || {};
+  return {
+    inspections: data.inspections ?? [],
+    pageInfo: data.pageInfo ?? {
+      nextCursor: null,
+      hasNextPage: false,
+    },
+  };
 };
 
 export const getAwaitingReceiptCases = async () => {
@@ -40,9 +45,21 @@ export const getCaseById = async (caseId) => {
   return response.data?.data?.case || response.data?.data?.recoveryCase || response.data?.data || response.data;
 };
 
-export const getCaseTimeline = async (caseId) => {
-  const response = await api.get(`/cases/${caseId}/timeline`);
-  return response.data?.data?.events || response.data?.data?.timeline || response.data?.data || response.data;
+export const getCaseTimeline = async (caseId, { cursor, limit } = {}) => {
+  const response = await api.get(`/cases/${caseId}/timeline`, {
+    params: {
+      ...(cursor && { cursor }),
+      ...(limit !== undefined && { limit }),
+    },
+  });
+  const data = response.data?.data || response.data || {};
+  return {
+    events: data.events ?? [],
+    pageInfo: data.pageInfo ?? {
+      nextCursor: null,
+      hasNextPage: false,
+    },
+  };
 };
 
 export const startInspection = async (caseId) => {

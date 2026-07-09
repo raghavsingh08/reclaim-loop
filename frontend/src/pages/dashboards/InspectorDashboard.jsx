@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { useNavigate } from 'react-router-dom';
-import { getInspectorDashboard, getMyInspections, getAwaitingReceiptCases, receiveCase } from '../../services/inspector';
+import { getInspectorDashboard, receiveCase } from '../../services/inspector';
 import { Wrench, CheckCircle, ClipboardList, MapPin, Search, ArrowRight, Package, Clock } from 'lucide-react';
 import './InspectorDashboard.css';
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
@@ -16,22 +16,14 @@ export function InspectorDashboard() {
   const { isDesktop } = useResponsiveLayout();
   
   const [stats, setStats] = useState(null);
-  const [inspections, setInspections] = useState([]);
-  const [awaitingCases, setAwaitingCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [dashboardData, myInspectionsData, awaiting] = await Promise.all([
-        getInspectorDashboard(),
-        getMyInspections(),
-        getAwaitingReceiptCases()
-      ]);
+      const dashboardData = await getInspectorDashboard();
       setStats(dashboardData);
-      setInspections(myInspectionsData);
-      setAwaitingCases(awaiting);
       setError(null);
     } catch (err) {
       setError(err.message || 'Failed to load inspector data');
@@ -65,12 +57,10 @@ export function InspectorDashboard() {
   if (loading && !stats) return <LoadingState text="Loading workbench data..." />;
   if (error) return <ErrorState title="System Error" description={error} />;
 
-  const pendingQueue = inspections.filter(i => {
-    const statusMatch = ['PENDING', 'IN_PROGRESS', 'ASSIGNED'].includes(i.status);
-    const caseStatusMatch = ['INSPECTION_ASSIGNED', 'INSPECTION_PENDING'].includes(i.case?.status || i.recoveryCase?.status);
-    return statusMatch || caseStatusMatch;
-  });
-  const completedQueue = inspections.filter(i => i.status === 'COMPLETED' || i.case?.status === 'INSPECTION_COMPLETED' || i.recoveryCase?.status === 'INSPECTION_COMPLETED');
+  const pendingQueue = stats?.assignedInspectionQueue ?? [];
+  const pendingReviewQueue = stats?.pendingReviewInspections ?? [];
+  const recentCompletedQueue = stats?.recentlyCompletedInspections ?? [];
+  const awaitingCases = stats?.awaitingReceiptCases ?? [];
   
   const getCaseId = (inspection) => {
     return inspection.caseId?._id || inspection.caseId || inspection.case?._id || inspection.case || inspection.recoveryCase?._id || inspection.recoveryCase;
@@ -99,13 +89,6 @@ export function InspectorDashboard() {
     if (inspection.facilityDetails?.name) return inspection.facilityDetails;
     return null;
   };
-  const pendingReviewQueue = completedQueue.slice(0, 3); // Mocking pending review
-  const recentCompletedQueue = completedQueue.slice(3, 8);
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const assignedToday = inspections.filter(i => new Date(i.createdAt) >= today).length;
-
   return (
     <div className="inspector-workbench">
       <div className="workbench-header">
@@ -125,7 +108,7 @@ export function InspectorDashboard() {
             </div>
             <div className="kpi-details">
               <span className="kpi-label">Pending Inspections</span>
-              <span className="kpi-value">{stats?.pendingInspections || pendingQueue.length}</span>
+              <span className="kpi-value">{stats?.pendingInspections ?? 0}</span>
             </div>
           </CardContent>
         </Card>
@@ -136,7 +119,7 @@ export function InspectorDashboard() {
             </div>
             <div className="kpi-details">
               <span className="kpi-label">Completed Inspections</span>
-              <span className="kpi-value">{stats?.completedInspections || completedQueue.length}</span>
+              <span className="kpi-value">{stats?.completedInspections ?? 0}</span>
             </div>
           </CardContent>
         </Card>
@@ -147,7 +130,7 @@ export function InspectorDashboard() {
             </div>
             <div className="kpi-details">
               <span className="kpi-label">Assigned Today</span>
-              <span className="kpi-value">{assignedToday}</span>
+              <span className="kpi-value">{stats?.assignedToday ?? 0}</span>
             </div>
           </CardContent>
         </Card>

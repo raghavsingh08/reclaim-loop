@@ -6,8 +6,6 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { initializeSocket } from './sockets/socket.js';
 import { OutboxWorker } from './workers/outbox.worker.js';
-import dns from "dns"
-dns.setServers(["8.8.8.8", "8.8.4.4"])
 
 const startServer = async () => {
   try {

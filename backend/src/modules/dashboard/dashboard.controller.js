@@ -22,7 +22,7 @@ export const inspectorDashboard = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, dashboard, 'Inspector dashboard retrieved'));
 });
 
-export const adminDashboard = asyncHandler(async (_req, res) => {
-  const dashboard = await getAdminDashboard();
+export const adminDashboard = asyncHandler(async (req, res) => {
+  const dashboard = await getAdminDashboard(req.user._id);
   res.status(200).json(new ApiResponse(200, dashboard, 'Admin dashboard retrieved'));
 });

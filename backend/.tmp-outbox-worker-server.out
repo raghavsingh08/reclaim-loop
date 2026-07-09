@@ -1,4 +1,0 @@
-◇ injected env (4) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
-MongoDB connected: ac-jsvtcoz-shard-00-02.tfdb56x.mongodb.net
-ReclaimLoop API listening on port 5099
-Outbox worker started (omen:59372:c5022a46-3fc8-4680-b93f-4871cb49335d)

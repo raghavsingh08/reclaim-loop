@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getCaseById, getCaseTimeline } from '../../services/customer';
@@ -23,18 +23,25 @@ export function CaseDetail() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [timeline, setTimeline] = useState([]);
+  const [timelinePageInfo, setTimelinePageInfo] = useState({ nextCursor: null, hasNextPage: false });
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const timelineRequestGenerationRef = useRef(0);
 
   const loadData = useCallback((showLoading = false) => {
     if (showLoading) setLoading(true);
+    const generation = ++timelineRequestGenerationRef.current;
     return Promise.all([
       getCaseById(caseId),
       getCaseTimeline(caseId),
     ])
       .then(([caseData, timelineData]) => {
         setData(caseData?.case || caseData?.recoveryCase || caseData);
-        setTimeline(timelineData?.events || timelineData || []);
+        if (generation === timelineRequestGenerationRef.current) {
+          setTimeline(timelineData?.events ?? []);
+          setTimelinePageInfo(timelineData?.pageInfo ?? { nextCursor: null, hasNextPage: false });
+        }
         setError(null);
       })
       .catch(err => setError(err.message))
@@ -48,6 +55,26 @@ export function CaseDetail() {
   }, [loadData]);
 
   useCaseRealtime(caseId, loadData);
+
+  const handleLoadMoreTimeline = async () => {
+    if (!timelinePageInfo.hasNextPage || !timelinePageInfo.nextCursor || timelineLoadingMore) return;
+    const generation = timelineRequestGenerationRef.current;
+    setTimelineLoadingMore(true);
+    try {
+      const timelineData = await getCaseTimeline(caseId, { cursor: timelinePageInfo.nextCursor });
+      if (generation !== timelineRequestGenerationRef.current) return;
+      setTimeline((current) => {
+        const existingIds = new Set(current.map(({ _id }) => _id));
+        const nextEvents = (timelineData.events ?? []).filter(({ _id }) => !existingIds.has(_id));
+        return [...current, ...nextEvents];
+      });
+      setTimelinePageInfo(timelineData.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    } catch (err) {
+      setError(err.message || 'Failed to load timeline events');
+    } finally {
+      setTimelineLoadingMore(false);
+    }
+  };
 
   if (loading) return <LoadingState text="Loading case details..." />;
   if (error || !data) return <ErrorState title="Case not found" description={error || "Could not load the requested case."} action={<Button onClick={() => navigate('/customer/cases')}>Back to Cases</Button>} />;
@@ -199,6 +226,16 @@ export function CaseDetail() {
                     </div>
                   </div>
                 ))}
+                {timelinePageInfo.hasNextPage && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleLoadMoreTimeline}
+                    disabled={timelineLoadingMore}
+                    style={{ alignSelf: 'flex-start', marginLeft: '40px' }}
+                  >
+                    {timelineLoadingMore ? 'Loading...' : 'Load More'}
+                  </Button>
+                )}
               </div>
             ) : (
               <EmptyState icon={Info} title="No events" description="No timeline events recorded yet." />

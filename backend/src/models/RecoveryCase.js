@@ -50,6 +50,8 @@ const recoveryCaseSchema = new mongoose.Schema(
 );
 
 recoveryCaseSchema.index({ customerId: 1 });
+recoveryCaseSchema.index({ createdAt: -1, _id: -1 });
+recoveryCaseSchema.index({ customerId: 1, createdAt: -1, _id: -1 });
 recoveryCaseSchema.index({ status: 1 });
 recoveryCaseSchema.index({ requestType: 1 });
 recoveryCaseSchema.index({ 'product.serialNumber': 1 });

@@ -7,6 +7,56 @@ import { Notification } from '../../models/Notification.js';
 import { User } from '../../models/User.js';
 import { ApiError } from '../../utils/ApiError.js';
 
+const DEFAULT_NOTIFICATION_LIMIT = 25;
+const MAX_NOTIFICATION_LIMIT = 100;
+const NOTIFICATION_CURSOR_VERSION = 1;
+
+const parseNotificationLimit = (value) => {
+  if (value === undefined) return DEFAULT_NOTIFICATION_LIMIT;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new ApiError(400, 'Notification limit must be an integer between 1 and 100');
+  }
+
+  const limit = Number(value);
+  if (limit < 1 || limit > MAX_NOTIFICATION_LIMIT) {
+    throw new ApiError(400, 'Notification limit must be an integer between 1 and 100');
+  }
+  return limit;
+};
+
+const encodeNotificationCursor = ({ createdAt, _id }) => Buffer.from(JSON.stringify({
+  v: NOTIFICATION_CURSOR_VERSION,
+  createdAt: createdAt.toISOString(),
+  id: _id.toString(),
+})).toString('base64url');
+
+const decodeNotificationCursor = (value) => {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !/^[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    throw new ApiError(400, 'Invalid notification cursor');
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const createdAt = new Date(decoded.createdAt);
+    if (
+      decoded.v !== NOTIFICATION_CURSOR_VERSION ||
+      typeof decoded.createdAt !== 'string' ||
+      Number.isNaN(createdAt.getTime()) ||
+      typeof decoded.id !== 'string' ||
+      !mongoose.isValidObjectId(decoded.id)
+    ) {
+      throw new Error('Invalid cursor payload');
+    }
+    return { createdAt, id: new mongoose.Types.ObjectId(decoded.id) };
+  } catch {
+    throw new ApiError(400, 'Invalid notification cursor');
+  }
+};
+
 export const createNotification = async ({
   userId,
   caseId,
@@ -136,7 +186,7 @@ export const createAdminNotifications = async (notification, options = {}) => {
     ? { logger: options }
     : options;
   const { session, commandId, logger } = normalizedOptions;
-  const adminQuery = User.find({ role: USER_ROLES.ADMIN, isActive: true }).select('_id');
+  const adminQuery = User.find({ role: USER_ROLES.ADMIN, isActive: true }).select('_id').lean();
   if (session) adminQuery.session(session);
   const admins = await adminQuery;
   const createForAdmin = ({ _id }) => createNotification({
@@ -156,8 +206,40 @@ export const createAdminNotifications = async (notification, options = {}) => {
   return notifications;
 };
 
-export const getMyNotifications = (userId) =>
-  Notification.find({ userId }).sort({ createdAt: -1 });
+export const getMyNotifications = async (userId, { limit: rawLimit, cursor: rawCursor } = {}) => {
+  const limit = parseNotificationLimit(rawLimit);
+  const filter = { userId };
+
+  if (rawCursor !== undefined) {
+    const cursor = decodeNotificationCursor(rawCursor);
+    filter.$or = [
+      { createdAt: { $lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+    ];
+  }
+
+  const results = await Notification.find(filter)
+    .select('_id userId caseId type title message metadata isRead createdAt updatedAt')
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .lean();
+  const hasNextPage = results.length > limit;
+  const notifications = hasNextPage ? results.slice(0, limit) : results;
+  const lastNotification = notifications.at(-1);
+
+  return {
+    notifications,
+    pageInfo: {
+      nextCursor: hasNextPage && lastNotification
+        ? encodeNotificationCursor(lastNotification)
+        : null,
+      hasNextPage,
+    },
+  };
+};
+
+export const getUnreadNotificationCount = (userId) =>
+  Notification.countDocuments({ userId, isRead: false });
 
 export const markNotificationRead = async (notificationId, userId) => {
   if (!mongoose.isValidObjectId(notificationId)) {

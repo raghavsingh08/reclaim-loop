@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
-import { getAdminDashboard, listAllCases, getFacilities } from '../../services/admin';
-import { getNotifications, markNotificationAsRead } from '../../services/notifications';
+import { getAdminDashboard, getFacilities } from '../../services/admin';
+import { markNotificationAsRead } from '../../services/notifications';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { EmptyState, LoadingState, ErrorState } from '../../components/ui/States';
@@ -22,24 +22,18 @@ function formatEventName(type) {
 export function AdminDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [allCases, setAllCases] = useState([]);
   const [facilities, setFacilities] = useState([]);
-  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [dashboardData, casesData, facilitiesData, notificationsData] = await Promise.all([
-      getAdminDashboard(),
-      listAllCases(),
-      getFacilities(),
-      getNotifications(),
+      const [dashboardData, facilitiesData] = await Promise.all([
+        getAdminDashboard(),
+        getFacilities(),
       ]);
       setData(dashboardData);
-      setAllCases(casesData?.cases || casesData || []);
       setFacilities(facilitiesData?.facilities || facilitiesData || []);
-      setNotifications(notificationsData?.notifications || notificationsData || []);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -57,7 +51,7 @@ export function AdminDashboard() {
   const handleMarkAsRead = async (id) => {
     try {
       await markNotificationAsRead(id);
-      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      await loadData();
     } catch (err) {
     }
   };
@@ -65,8 +59,9 @@ export function AdminDashboard() {
   if (loading) return <LoadingState text="Loading Operations Center..." />;
   if (error) return <ErrorState title="Failed to load" description={error} />;
 
-  const pendingDecisionsCases = allCases.filter(c => c.status === 'DECISION_PENDING');
-  const unreadNotifications = notifications.filter(n => !n.isRead).slice(0, 5); // top 5 unread
+  const pendingDecisionsCases = data?.pendingDecisionCases ?? [];
+  const unreadNotifications = data?.unreadNotificationsPreview ?? [];
+  const unreadNotificationsCount = data?.unreadNotificationsCount ?? 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -95,7 +90,7 @@ export function AdminDashboard() {
           
           {/* Pending Decisions Panel */}
           <Card>
-            <CardHeader title="Action Required: Pending Decisions" subtitle={`${pendingDecisionsCases.length} cases waiting for inspection outcome decision`} />
+            <CardHeader title="Action Required: Pending Decisions" subtitle={`${data.pendingDecisions ?? 0} cases waiting for inspection outcome decision`} />
             <CardContent style={{ padding: 0 }}>
               {pendingDecisionsCases.length > 0 ? (
                 <div className="table-responsive">
@@ -249,7 +244,7 @@ export function AdminDashboard() {
 
           {/* Unread Notifications Panel */}
           <Card>
-            <CardHeader title="Unread Alerts" />
+            <CardHeader title="Unread Alerts" subtitle={`${unreadNotificationsCount} unread alerts`} />
             <CardContent>
               {unreadNotifications.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>

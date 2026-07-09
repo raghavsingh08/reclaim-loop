@@ -19,6 +19,56 @@ import {
   createNotification,
 } from '../notifications/notification.service.js';
 
+const DEFAULT_INSPECTION_LIMIT = 25;
+const MAX_INSPECTION_LIMIT = 100;
+const INSPECTION_CURSOR_VERSION = 1;
+
+const parseInspectionLimit = (value) => {
+  if (value === undefined) return DEFAULT_INSPECTION_LIMIT;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new ApiError(400, 'Inspection limit must be an integer between 1 and 100');
+  }
+
+  const limit = Number(value);
+  if (limit < 1 || limit > MAX_INSPECTION_LIMIT) {
+    throw new ApiError(400, 'Inspection limit must be an integer between 1 and 100');
+  }
+  return limit;
+};
+
+const encodeInspectionCursor = ({ createdAt, _id }) => Buffer.from(JSON.stringify({
+  v: INSPECTION_CURSOR_VERSION,
+  createdAt: createdAt.toISOString(),
+  id: _id.toString(),
+})).toString('base64url');
+
+const decodeInspectionCursor = (value) => {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !/^[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    throw new ApiError(400, 'Invalid inspection cursor');
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const createdAt = new Date(decoded.createdAt);
+    if (
+      decoded.v !== INSPECTION_CURSOR_VERSION ||
+      typeof decoded.createdAt !== 'string' ||
+      Number.isNaN(createdAt.getTime()) ||
+      typeof decoded.id !== 'string' ||
+      !mongoose.isValidObjectId(decoded.id)
+    ) {
+      throw new Error('Invalid cursor payload');
+    }
+    return { createdAt, id: new mongoose.Types.ObjectId(decoded.id) };
+  } catch {
+    throw new ApiError(400, 'Invalid inspection cursor');
+  }
+};
+
 const requireObjectId = (value, label) => {
   if (!mongoose.isValidObjectId(value)) throw new ApiError(400, `Invalid ${label}`);
 };
@@ -60,7 +110,7 @@ export const assignInspection = async (
         _id: inspectorId,
         role: USER_ROLES.INSPECTOR,
         isActive: true,
-      }).session(session);
+      }).select('_id role isActive').session(session);
       if (!inspector) throw new ApiError(400, 'Inspector must be an active INSPECTOR user');
       if (
         ![
@@ -82,6 +132,7 @@ export const assignInspection = async (
 
       const previousStatus = expectedStatus;
       const latestInspection = await Inspection.findOne({ caseId: recoveryCase._id })
+        .select('_id status completedAt')
         .sort({ createdAt: -1 })
         .session(session);
 
@@ -346,24 +397,37 @@ export const getInspectionByCase = async (caseId, actor) => {
   const inspection = await Inspection.findOne({ caseId })
     .sort({ createdAt: -1 })
     .populate('caseId')
-    .populate('facilityId', 'name type location');
+    .populate('facilityId', 'name type location')
+    .lean();
   if (!inspection) throw new ApiError(404, 'Inspection not found');
   if (
     actor.role === USER_ROLES.INSPECTOR &&
-    !inspection.inspectorId.equals(actor._id)
+    String(inspection.inspectorId) !== String(actor._id)
   ) {
     throw new ApiError(404, 'Inspection not found');
   }
 
   const history = await Inspection.find({ caseId })
     .sort({ createdAt: -1 })
-    .populate('facilityId', 'name type location');
+    .populate('facilityId', 'name type location')
+    .lean();
 
   return { inspection, history };
 };
 
-export const getMyInspections = async (inspector) => {
-  const inspections = await Inspection.find({ inspectorId: inspector._id })
+export const getMyInspections = async (inspector, { limit: rawLimit, cursor: rawCursor } = {}) => {
+  const limit = parseInspectionLimit(rawLimit);
+  const filter = { inspectorId: inspector._id };
+
+  if (rawCursor !== undefined) {
+    const cursor = decodeInspectionCursor(rawCursor);
+    filter.$or = [
+      { createdAt: { $lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+    ];
+  }
+
+  const results = await Inspection.find(filter)
     .populate(
       'caseId',
       'caseCode status requestType product.name product.category product.serialNumber pickupAddress assignedFacilityId',
@@ -372,11 +436,22 @@ export const getMyInspections = async (inspector) => {
       'facilityId',
       'name type location.city location.state location.pincode',
     )
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
     .lean();
 
-  return inspections.map((inspection) => ({
-    ...inspection,
-    recoveryCase: inspection.caseId,
-  }));
+  const hasNextPage = results.length > limit;
+  const inspections = hasNextPage ? results.slice(0, limit) : results;
+  const lastInspection = inspections.at(-1);
+
+  return {
+    inspections: inspections.map((inspection) => ({
+      ...inspection,
+      recoveryCase: inspection.caseId,
+    })),
+    pageInfo: {
+      nextCursor: hasNextPage && lastInspection ? encodeInspectionCursor(lastInspection) : null,
+      hasNextPage,
+    },
+  };
 };

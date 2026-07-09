@@ -1,3 +1,0 @@
-◇ injected env (4) from .env // tip: ⌘ suppress logs { quiet: true }
-MongoDB connected: ac-jsvtcoz-shard-00-01.tfdb56x.mongodb.net
-ReclaimLoop API listening on port 5099

@@ -60,6 +60,6 @@ export const getOne = asyncHandler(async (req, res) => {
 });
 
 export const getMine = asyncHandler(async (req, res) => {
-  const inspections = await getMyInspections(req.user);
-  res.status(200).json(new ApiResponse(200, { inspections }, 'Assigned inspections retrieved'));
+  const result = await getMyInspections(req.user, req.query);
+  res.status(200).json(new ApiResponse(200, result, 'Assigned inspections retrieved'));
 });

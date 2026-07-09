@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { Bell, Search, User } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getNotifications } from '../services/notifications';
+import { getUnreadNotificationCount } from '../services/notifications';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import './TopNavigation.css';
 import { useNotificationsRealtime } from '../hooks/useNotificationsRealtime';
@@ -16,9 +16,8 @@ export function TopNavigation() {
 
   const refreshUnreadCount = useCallback(async () => {
     if (!user || location.pathname.includes('/login')) return;
-    const data = await getNotifications();
-    const count = data.notifications?.filter(notification => !notification.isRead).length || 0;
-    setUnreadCount(count);
+    const data = await getUnreadNotificationCount();
+    setUnreadCount(data.unreadNotificationsCount ?? 0);
   }, [location.pathname, user]);
 
   useEffect(() => {

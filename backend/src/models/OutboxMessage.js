@@ -31,8 +31,9 @@ const outboxMessageSchema = new mongoose.Schema(
 );
 
 outboxMessageSchema.index({ deduplicationKey: 1 }, { unique: true });
-outboxMessageSchema.index({ status: 1, nextAttemptAt: 1 });
-outboxMessageSchema.index({ status: 1, lockedAt: 1 });
+// Support the Outbox polling claim filters and their createdAt ordering.
+outboxMessageSchema.index({ status: 1, nextAttemptAt: 1, createdAt: 1 });
+outboxMessageSchema.index({ status: 1, lockedAt: 1, createdAt: 1 });
 
 // Workflow code must use Outbox.enqueue() so insertion always participates in
 // an existing business transaction. This model is infrastructure persistence.

@@ -45,7 +45,7 @@ export const createFacility = async ({ name, type, location, supportedCategories
   });
 };
 
-export const listFacilities = () => Facility.find().sort({ name: 1 });
+export const listFacilities = () => Facility.find().sort({ name: 1 }).lean();
 
 export const getFacilityById = async (facilityId) => {
   requireObjectId(facilityId, 'facility ID');
