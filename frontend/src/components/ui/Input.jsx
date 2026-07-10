@@ -1,7 +1,7 @@
 import React, { forwardRef, useId } from 'react';
 import './Input.css';
 
-export const Input = forwardRef(({ className = '', label, error, icon: Icon, id, ...props }, ref) => {
+export const Input = forwardRef(({ className = '', label, error, icon: Icon, rightElement, id, ...props }, ref) => {
   const generatedId = useId();
   const inputId = id || generatedId;
 
@@ -13,9 +13,10 @@ export const Input = forwardRef(({ className = '', label, error, icon: Icon, id,
         <input 
           id={inputId}
           ref={ref}
-          className={`input-field ${Icon ? 'has-icon' : ''} ${error ? 'is-invalid' : ''}`}
+          className={`input-field ${Icon ? 'has-icon' : ''} ${rightElement ? 'has-right-element' : ''} ${error ? 'is-invalid' : ''}`}
           {...props}
         />
+        {rightElement && <div className="input-right-element">{rightElement}</div>}
       </div>
       {error && <span className="input-error" role="alert">{error}</span>}
     </div>

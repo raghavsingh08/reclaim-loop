@@ -82,7 +82,7 @@ export function CourierDashboard() {
         </Card>
         <Card>
           <CardContent className="kpi-card-content">
-            <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', color: '#eab308' }}>
+            <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>
               <Clock size={24} />
             </div>
             <div className="kpi-details">

@@ -6,6 +6,7 @@ import { getUnreadNotificationCount } from '../services/notifications';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import './TopNavigation.css';
 import { useNotificationsRealtime } from '../hooks/useNotificationsRealtime';
+import { ThemeToggle } from '../components/ui/ThemeToggle';
 
 export function TopNavigation() {
   const { user, logout } = useAuth();
@@ -71,6 +72,8 @@ export function TopNavigation() {
           )}
         </button>
         
+        <ThemeToggle style={{ marginRight: 'var(--space-2)' }} />
+
         <div className="user-profile">
           <div className="avatar">
             <User size={16} />
