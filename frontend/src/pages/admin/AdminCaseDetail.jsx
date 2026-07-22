@@ -60,41 +60,57 @@ export function AdminCaseDetail() {
     start: '', end: ''
   });
   const timelineRequestGenerationRef = useRef(0);
+  const loadDataPromiseRef = useRef(null);
+  const lastLoadCompletedAtRef = useRef(0);
+  const actionInFlightRef = useRef(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const generation = ++timelineRequestGenerationRef.current;
-      
-      const cData = await getCaseById(caseId);
-      const skipInspection = [
-        'CASE_CREATED', 'PICKUP_ASSIGNED', 'PICKUP_ACCEPTED', 
-        'ITEM_COLLECTED', 'DELIVERED_TO_FACILITY', 'FACILITY_RECEIVED'
-      ].includes(cData.status);
+  const loadData = useCallback(async ({ force = false } = {}) => {
+    if (loadDataPromiseRef.current) return loadDataPromiseRef.current;
+    if (!force && Date.now() - lastLoadCompletedAtRef.current < 500) return undefined;
 
-      const [tData, dData, rData, fData, iData, inspData] = await Promise.all([
-        getCaseTimeline(caseId),
-        getCaseDecisions(caseId),
-        getCaseRefunds(caseId),
-        getFacilities().catch(() => []), // non-blocking fallback
-        getInspectors().catch(() => []),
-        skipInspection ? Promise.resolve(null) : getCaseInspection(caseId).catch(() => null)
-      ]);
-      setCaseData(cData);
-      if (generation === timelineRequestGenerationRef.current) {
-        setTimeline(tData?.events ?? []);
-        setTimelinePageInfo(tData?.pageInfo ?? { nextCursor: null, hasNextPage: false });
+    const loadPromise = (async () => {
+      try {
+        setLoading(true);
+        const generation = ++timelineRequestGenerationRef.current;
+        
+        const cData = await getCaseById(caseId);
+        const skipInspection = [
+          'CASE_CREATED', 'PICKUP_ASSIGNED', 'PICKUP_ACCEPTED', 
+          'ITEM_COLLECTED', 'DELIVERED_TO_FACILITY', 'FACILITY_RECEIVED'
+        ].includes(cData.status);
+        const shouldFetchFacilities = ['CASE_CREATED', 'ITEM_COLLECTED', 'IN_TRANSIT'].includes(cData.status);
+        const shouldFetchInspectors = cData.status === 'FACILITY_RECEIVED';
+
+        const [tData, dData, rData, fData, iData, inspData] = await Promise.all([
+          getCaseTimeline(caseId),
+          getCaseDecisions(caseId),
+          getCaseRefunds(caseId),
+          shouldFetchFacilities ? getFacilities().catch(() => []) : Promise.resolve([]),
+          shouldFetchInspectors ? getInspectors().catch(() => []) : Promise.resolve([]),
+          skipInspection ? Promise.resolve(null) : getCaseInspection(caseId).catch(() => null)
+        ]);
+        setCaseData(cData);
+        if (generation === timelineRequestGenerationRef.current) {
+          setTimeline(tData?.events ?? []);
+          setTimelinePageInfo(tData?.pageInfo ?? { nextCursor: null, hasNextPage: false });
+        }
+        setDecisions(dData?.length ? dData : []);
+        setRefunds(rData?.length ? rData : []);
+        setFacilities(fData?.facilities || fData || []);
+        setInspectors(iData || []);
+        setInspection(inspData);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Failed to load case details');
+      } finally {
+        lastLoadCompletedAtRef.current = Date.now();
+        loadDataPromiseRef.current = null;
+        setLoading(false);
       }
-      setDecisions(dData?.length ? dData : []);
-      setRefunds(rData?.length ? rData : []);
-      setFacilities(fData?.facilities || fData || []);
-      setInspectors(iData || []);
-      setInspection(inspData);
-    } catch (err) {
-      setError(err.message || 'Failed to load case details');
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    loadDataPromiseRef.current = loadPromise;
+    return loadPromise;
   }, [caseId]);
 
   useEffect(() => {
@@ -124,6 +140,8 @@ export function AdminCaseDetail() {
   };
 
   const handleAction = async (actionFn, payload = null) => {
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     setActionError(null);
     setSuccessMessage(null);
     setActionLoading(true);
@@ -134,7 +152,7 @@ export function AdminCaseDetail() {
         await actionFn(caseId, payload);
       }
       setSuccessMessage('Action completed successfully.');
-      await loadData();
+      await loadData({ force: true });
     } catch (err) {
       const code = err.response?.data?.code;
       if (code === 'IDEMPOTENCY_IN_PROGRESS') {
@@ -145,6 +163,7 @@ export function AdminCaseDetail() {
         setActionError(err.response?.data?.message || err.message || 'Action failed');
       }
     } finally {
+      actionInFlightRef.current = false;
       setActionLoading(false);
     }
   };

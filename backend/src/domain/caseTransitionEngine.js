@@ -5,6 +5,7 @@ import { RecoveryCase } from '../models/RecoveryCase.js';
 import { assertValidTransition } from '../modules/cases/caseStateMachine.js';
 import { ApiError } from '../utils/ApiError.js';
 import { Outbox } from './outbox.js';
+import { OWNER_TYPES } from '../constants/ownerTypes.js';
 
 const postCommitActions = new WeakMap();
 const PROTECTED_CASE_PATCH_FIELDS = new Set([

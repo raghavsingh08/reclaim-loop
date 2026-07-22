@@ -10,6 +10,10 @@ const parseOrigins = (value) =>
     ?.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean) || [];
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
 
 for (const variable of requiredVariables) {
   if (!process.env[variable]) {
@@ -22,6 +26,7 @@ const corsOrigins =
   nodeEnv === 'production'
     ? configuredCorsOrigins
     : Array.from(new Set([...defaultDevelopmentOrigins, ...configuredCorsOrigins]));
+const isProduction = nodeEnv === 'production';
 
 export const env = Object.freeze({
   nodeEnv,
@@ -30,4 +35,9 @@ export const env = Object.freeze({
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   corsOrigins,
+  authRateLimitMax: parsePositiveInteger(process.env.AUTH_RATE_LIMIT_MAX, 10),
+  apiRateLimitMax: parsePositiveInteger(
+    process.env.API_RATE_LIMIT_MAX,
+    isProduction ? 300 : 3000,
+  ),
 });

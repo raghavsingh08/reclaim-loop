@@ -26,7 +26,7 @@ const rateLimitHandler = (_req, res) => {
 
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: env.authRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -34,9 +34,10 @@ const authRateLimiter = rateLimit({
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+  limit: env.apiRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.originalUrl.startsWith('/api/auth/'),
   handler: rateLimitHandler,
 });
 
