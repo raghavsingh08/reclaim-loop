@@ -237,41 +237,63 @@ export const getInspectorDashboard = async (inspectorId) => {
 };
 
 export const getAdminDashboard = async (adminId) => {
+  const needsPickupFilter = { status: CASE_STATUSES.CASE_CREATED };
+  const needsFacilityReceiptFilter = { status: CASE_STATUSES.DELIVERED_TO_FACILITY };
+  const needsInspectorFilter = {
+    status: { $in: [CASE_STATUSES.FACILITY_RECEIVED, CASE_STATUSES.REINSPECTION_REQUESTED] },
+  };
+  const pendingDecisionFilter = {
+    status: { $in: [CASE_STATUSES.DECISION_PENDING, CASE_STATUSES.INSPECTION_COMPLETED] },
+  };
+  const pendingRefundFilter = {
+    status: {
+      $in: [
+        CASE_STATUSES.REFUND_REVIEW_PENDING,
+        CASE_STATUSES.REFUND_PENDING,
+        CASE_STATUSES.REFUND_APPROVED,
+      ],
+    },
+  };
+  const activeCasesFilter = { status: { $nin: TERMINAL_CASE_STATUSES } };
+  const completedCasesFilter = { status: CASE_STATUSES.CASE_COMPLETED };
+
+  const selectFields = '_id caseCode product.name requestType status createdAt updatedAt';
+
   const [
     totalCases,
-    activeCases,
-    completedCases,
-    pendingDecisions,
-    refundPendingCases,
+    activeCasesCount,
+    completedCasesCount,
+    pendingDecisionsCount,
+    refundPendingCasesCount,
     refundTotals,
-    recentCases,
     recentEvents,
-    pendingDecisionCases,
     unreadNotificationsPreview,
     unreadNotificationsCount,
+    needsPickupItems,
+    needsPickupCount,
+    needsFacilityReceiptItems,
+    needsFacilityReceiptCount,
+    needsInspectorItems,
+    needsInspectorCount,
+    pendingDecisionItems,
+    pendingDecisionCount,
+    pendingRefundItems,
+    pendingRefundCount,
+    activeCaseItems,
+    recentlyCompletedItems,
   ] = await Promise.all([
     RecoveryCase.countDocuments(),
-    RecoveryCase.countDocuments({ status: { $nin: TERMINAL_CASE_STATUSES } }),
-    RecoveryCase.countDocuments({ status: CASE_STATUSES.CASE_COMPLETED }),
-    RecoveryCase.countDocuments({ status: CASE_STATUSES.DECISION_PENDING }),
-    RecoveryCase.countDocuments({ status: CASE_STATUSES.REFUND_PENDING }),
+    RecoveryCase.countDocuments(activeCasesFilter),
+    RecoveryCase.countDocuments(completedCasesFilter),
+    RecoveryCase.countDocuments(pendingDecisionFilter),
+    RecoveryCase.countDocuments(pendingRefundFilter),
     LedgerEntry.aggregate([
       { $match: { type: 'REFUND_OBLIGATION' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]),
-    RecoveryCase.find()
-      .select('_id caseCode requestType status createdAt updatedAt product.name')
-      .sort({ createdAt: -1 })
-      .limit(RECENT_LIMIT)
-      .lean(),
     Event.find()
       .select('_id caseId type actorRole metadata createdAt occurredAt')
       .sort({ createdAt: -1 })
-      .limit(RECENT_LIMIT)
-      .lean(),
-    RecoveryCase.find({ status: CASE_STATUSES.DECISION_PENDING })
-      .select('_id caseCode product.name status createdAt')
-      .sort({ createdAt: -1, _id: -1 })
       .limit(RECENT_LIMIT)
       .lean(),
     Notification.find({ userId: adminId, isRead: false })
@@ -280,18 +302,98 @@ export const getAdminDashboard = async (adminId) => {
       .limit(5)
       .lean(),
     Notification.countDocuments({ userId: adminId, isRead: false }),
+
+    // 1. Needs Pickup Assignment
+    RecoveryCase.find(needsPickupFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+    RecoveryCase.countDocuments(needsPickupFilter),
+
+    // 2. Needs Facility Receipt
+    RecoveryCase.find(needsFacilityReceiptFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+    RecoveryCase.countDocuments(needsFacilityReceiptFilter),
+
+    // 3. Needs Inspector Assignment
+    RecoveryCase.find(needsInspectorFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+    RecoveryCase.countDocuments(needsInspectorFilter),
+
+    // 4. Pending Decisions
+    RecoveryCase.find(pendingDecisionFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+    RecoveryCase.countDocuments(pendingDecisionFilter),
+
+    // 5. Pending Refunds
+    RecoveryCase.find(pendingRefundFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+    RecoveryCase.countDocuments(pendingRefundFilter),
+
+    // 6. Active Recovery Cases (preview up to 10)
+    RecoveryCase.find(activeCasesFilter)
+      .select(selectFields)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(RECENT_LIMIT)
+      .lean(),
+
+    // 7. Recently Completed Cases (preview up to 5, sorted by updatedAt desc)
+    RecoveryCase.find(completedCasesFilter)
+      .select(selectFields)
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(5)
+      .lean(),
   ]);
 
   return {
     totalCases,
-    activeCases,
-    completedCases,
-    pendingDecisions,
-    refundPendingCases,
+    activeCases: {
+      items: activeCaseItems,
+      totalCount: activeCasesCount,
+    },
+    completedCases: completedCasesCount,
+    pendingDecisions: pendingDecisionsCount,
+    refundPendingCases: refundPendingCasesCount,
     totalRefundObligations: refundTotals[0]?.total || 0,
-    recentCases,
+    recentCases: activeCaseItems,
     recentEvents,
-    pendingDecisionCases,
+    pendingDecisionCases: {
+      items: pendingDecisionItems,
+      totalCount: pendingDecisionCount,
+    },
+    needsPickupCases: {
+      items: needsPickupItems,
+      totalCount: needsPickupCount,
+    },
+    needsFacilityReceiptCases: {
+      items: needsFacilityReceiptItems,
+      totalCount: needsFacilityReceiptCount,
+    },
+    needsInspectorCases: {
+      items: needsInspectorItems,
+      totalCount: needsInspectorCount,
+    },
+    pendingRefundCases: {
+      items: pendingRefundItems,
+      totalCount: pendingRefundCount,
+    },
+    recentlyCompletedCases: {
+      items: recentlyCompletedItems,
+      totalCount: completedCasesCount,
+    },
     unreadNotificationsPreview,
     unreadNotificationsCount,
   };

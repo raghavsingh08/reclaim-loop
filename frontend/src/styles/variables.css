@@ -14,6 +14,9 @@
   --color-primary: #2563eb; /* blue-600 */
   --color-primary-hover: #1d4ed8; /* blue-700 */
   --color-primary-light: #eff6ff; /* blue-50 */
+
+  --color-action-link: #1d4ed8; /* blue-700 - dark blue readable on light background */
+  --color-action-link-hover: #1e40af; /* blue-800 */
   
   /* Status Colors */
   --color-success: #16a34a; /* green-600 */
@@ -99,6 +102,9 @@
   --color-primary: #3b82f6; /* blue-500 */
   --color-primary-hover: #60a5fa; /* blue-400 */
   --color-primary-light: #1e3a8a; /* blue-900 */
+
+  --color-action-link: #60a5fa; /* blue-400 - light blue bright on dark background */
+  --color-action-link-hover: #93c5fd; /* blue-300 */
   
   /* Status Colors */
   --color-success: #22c55e;
